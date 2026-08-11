@@ -11,6 +11,8 @@ import com.xinglin.video.dto.VideoQueryRequest;
 import com.xinglin.video.entity.*;
 import com.xinglin.video.repository.*;
 import com.xinglin.video.vo.*;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.*;
@@ -28,6 +30,7 @@ import java.util.stream.Collectors;
 
 @Service
 public class VideoService {
+    private static final Logger log = LoggerFactory.getLogger(VideoService.class);
     private static final String ONLINE = "ONLINE";
 
     private final VideoRepository videoRepository;
@@ -73,6 +76,7 @@ public class VideoService {
     }
 
     public HomeVO home(Long userId) {
+        log.info("video home query userId={}", userId);
         HomeVO home = new HomeVO();
         home.setCategories(categoryService.listEnabledCategories());
         home.setLatest(videoRepository.findTop8ByStatusOrderByPublishTimeDesc(ONLINE).stream().map(v -> toCard(v, userId)).collect(Collectors.toList()));
@@ -88,6 +92,8 @@ public class VideoService {
     }
 
     public PageResponse<VideoCardVO> query(VideoQueryRequest request, Long userId) {
+        log.info("video query keyword={} categoryId={} sort={} page={} pageSize={} userId={}",
+                request.getKeyword(), request.getCategoryId(), request.getSort(), request.getPage(), request.getPageSize(), userId);
         int page = normalizePage(request.getPage());
         int pageSize = normalizePageSize(request.getPageSize());
         Pageable pageable = PageRequest.of(page - 1, pageSize, buildSort(request.getSort()));
@@ -100,16 +106,20 @@ public class VideoService {
     }
 
     public VideoDetailVO detail(Long videoId, Long userId) {
+        log.info("video detail query videoId={} userId={}", videoId, userId);
         if (videoId == null || videoId <= 0) {
             throw new BusinessException(400, "视频ID不合法");
         }
 
         VideoDetailVO base = videoDetailLocalCache.getIfPresent(videoId);
         if (base == null) {
+            log.info("video detail local cache miss videoId={}", videoId);
             Video video = videoRepository.findById(videoId)
                     .orElseThrow(() -> new BusinessException(404, "视频不存在"));
             base = toDetail(video);
             videoDetailLocalCache.put(videoId, base);
+        } else {
+            log.info("video detail local cache hit videoId={}", videoId);
         }
 
         VideoDetailVO result = cloneDetail(base);
@@ -132,25 +142,31 @@ public class VideoService {
     }
 
     public void recordPlay(Long videoId, Long userId, String ip, PlayRequest request) {
+        log.info("video play report videoId={} userId={} ip={} playedSecond={}", videoId, userId, ip, request.getPlayedSecond());
         Video video = videoRepository.findById(videoId).orElseThrow(() -> new BusinessException(404, "视频不存在"));
         int played = Optional.ofNullable(request.getPlayedSecond()).orElse(0);
         if (played < effectivePlaySeconds) {
+            log.info("video play ignored by threshold videoId={} userId={} playedSecond={}", videoId, userId, played);
             return;
         }
         String identity = userId != null ? String.valueOf(userId) : Integer.toHexString(Objects.toString(ip, "anonymous").hashCode());
         String dedupKey = "video:play:dedup:" + videoId + ":" + identity;
         Boolean inserted = redisTemplate.opsForValue().setIfAbsent(dedupKey, "1", Duration.ofMinutes(playDedupMinutes));
         if (Boolean.FALSE.equals(inserted)) {
+            log.info("video play ignored by dedup videoId={} identity={}", videoId, identity);
             return;
         }
         video.setPlayCount(Optional.ofNullable(video.getPlayCount()).orElse(0L) + 1);
         videoRepository.save(video);
         videoDetailLocalCache.invalidate(videoId);
         redisTemplate.opsForZSet().incrementScore("video:rank:hot:total", String.valueOf(videoId), 1);
+        log.info("video play counted videoId={} userId={} playCount={}", videoId, userId, video.getPlayCount());
     }
 
     @Transactional
     public ProgressVO updateProgress(Long videoId, Long userId, ProgressRequest request) {
+        log.info("video progress update videoId={} userId={} currentSecond={} duration={}",
+                videoId, userId, request.getCurrentSecond(), request.getDuration());
         requireLogin(userId);
         Video video = videoRepository.findById(videoId).orElseThrow(() -> new BusinessException(404, "视频不存在"));
         int duration = Math.max(1, Optional.ofNullable(request.getDuration()).orElse(video.getDuration()));
@@ -184,12 +200,14 @@ public class VideoService {
             event.put("videoId", videoId);
             event.put("finishedAt", LocalDateTime.now().toString());
             rabbitTemplate.convertAndSend(RabbitConfig.VIDEO_EXCHANGE, RabbitConfig.LEARNING_ROUTING_KEY, event);
+            log.info("video learning finished event sent userId={} videoId={} eventId={}", userId, videoId, event.get("eventId"));
         }
         return new ProgressVO(current, percent, finished);
     }
 
     @Transactional
     public void like(Long videoId, Long userId) {
+        log.info("video like request videoId={} userId={}", videoId, userId);
         requireLogin(userId);
         Video video = videoRepository.findById(videoId).orElseThrow(() -> new BusinessException(404, "视频不存在"));
         if (!likeRepository.existsByUserIdAndVideoId(userId, videoId)) {
@@ -197,11 +215,13 @@ public class VideoService {
             video.setLikeCount(Optional.ofNullable(video.getLikeCount()).orElse(0L) + 1);
             videoRepository.save(video);
             videoDetailLocalCache.invalidate(videoId);
+            log.info("video like success videoId={} userId={} likeCount={}", videoId, userId, video.getLikeCount());
         }
     }
 
     @Transactional
     public void unlike(Long videoId, Long userId) {
+        log.info("video unlike request videoId={} userId={}", videoId, userId);
         requireLogin(userId);
         Video video = videoRepository.findById(videoId).orElseThrow(() -> new BusinessException(404, "视频不存在"));
         if (likeRepository.existsByUserIdAndVideoId(userId, videoId)) {
@@ -209,11 +229,13 @@ public class VideoService {
             video.setLikeCount(Math.max(0L, Optional.ofNullable(video.getLikeCount()).orElse(0L) - 1));
             videoRepository.save(video);
             videoDetailLocalCache.invalidate(videoId);
+            log.info("video unlike success videoId={} userId={} likeCount={}", videoId, userId, video.getLikeCount());
         }
     }
 
     @Transactional
     public void favorite(Long videoId, Long userId) {
+        log.info("video favorite request videoId={} userId={}", videoId, userId);
         requireLogin(userId);
         Video video = videoRepository.findById(videoId).orElseThrow(() -> new BusinessException(404, "视频不存在"));
         if (!favoriteRepository.existsByUserIdAndVideoId(userId, videoId)) {
@@ -221,11 +243,13 @@ public class VideoService {
             video.setCollectCount(Optional.ofNullable(video.getCollectCount()).orElse(0L) + 1);
             videoRepository.save(video);
             videoDetailLocalCache.invalidate(videoId);
+            log.info("video favorite success videoId={} userId={} collectCount={}", videoId, userId, video.getCollectCount());
         }
     }
 
     @Transactional
     public void unfavorite(Long videoId, Long userId) {
+        log.info("video unfavorite request videoId={} userId={}", videoId, userId);
         requireLogin(userId);
         Video video = videoRepository.findById(videoId).orElseThrow(() -> new BusinessException(404, "视频不存在"));
         if (favoriteRepository.existsByUserIdAndVideoId(userId, videoId)) {
@@ -233,10 +257,12 @@ public class VideoService {
             video.setCollectCount(Math.max(0L, Optional.ofNullable(video.getCollectCount()).orElse(0L) - 1));
             videoRepository.save(video);
             videoDetailLocalCache.invalidate(videoId);
+            log.info("video unfavorite success videoId={} userId={} collectCount={}", videoId, userId, video.getCollectCount());
         }
     }
 
     public PageResponse<VideoCardVO> learningHistory(Long userId, VideoQueryRequest request) {
+        log.info("video learning history query userId={} page={} pageSize={}", userId, request.getPage(), request.getPageSize());
         requireLogin(userId);
         int page = normalizePage(request.getPage());
         int pageSize = normalizePageSize(request.getPageSize());
@@ -249,6 +275,7 @@ public class VideoService {
     }
 
     public PageResponse<VideoCardVO> favorites(Long userId, VideoQueryRequest request) {
+        log.info("video favorites query userId={} page={} pageSize={}", userId, request.getPage(), request.getPageSize());
         requireLogin(userId);
         int page = normalizePage(request.getPage());
         int pageSize = normalizePageSize(request.getPageSize());
@@ -262,6 +289,7 @@ public class VideoService {
 
     @Transactional
     public VideoDetailVO saveVideo(SaveVideoRequest request, Long adminId) {
+        log.info("admin save video id={} title={} status={} adminId={}", request.getId(), request.getTitle(), request.getStatus(), adminId);
         Video video = request.getId() == null ? new Video() : videoRepository.findById(request.getId()).orElseGet(Video::new);
         video.setTitle(request.getTitle());
         video.setDescription(request.getDescription());
@@ -285,6 +313,7 @@ public class VideoService {
 
     @Transactional
     public void updateStatus(Long videoId, String status) {
+        log.info("admin update video status videoId={} status={}", videoId, status);
         Video video = videoRepository.findById(videoId).orElseThrow(() -> new BusinessException(404, "视频不存在"));
         video.setStatus(status);
         if (ONLINE.equals(status) && video.getPublishTime() == null) {

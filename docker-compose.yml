@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   mysql:
     image: mysql:8.0
@@ -82,6 +80,35 @@ services:
     networks:
       - xinglin-net
 
+  user-service:
+    build:
+      context: ./backend/user-service
+    image: xinglin/user-service:1.0.0
+    container_name: xinglin-user-service
+    restart: unless-stopped
+    depends_on:
+      - mysql
+      - redis
+      - rabbitmq
+    environment:
+      SERVER_PORT: 8081
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-xinglin_video}
+      MYSQL_USERNAME: root
+      MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD:-xinglin_mysql_pwd}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-xinglin_redis_pwd}
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USERNAME: ${RABBITMQ_USERNAME:-xinglin}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD:-xinglin_rabbit_pwd}
+      JWT_SECRET: ${JWT_SECRET:-change_this_dev_secret_at_least_32_chars}
+      TZ: Asia/Shanghai
+    networks:
+      - xinglin-net
+
   frontend:
     build:
       context: ./frontend
@@ -90,6 +117,7 @@ services:
     restart: unless-stopped
     depends_on:
       - video-service
+      - user-service
     volumes:
       - ./data/media:/data/media:ro
     ports:

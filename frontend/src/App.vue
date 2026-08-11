@@ -26,10 +26,11 @@
 
       <div class="login-card">
         <div class="avatar">学</div>
-        <div>
-          <strong>演示用户</strong>
+        <div v-if="loggedIn">
+          <strong>{{ nickname }}</strong>
           <span>ID: {{ userId }}</span>
         </div>
+        <RouterLink v-else to="/login" class="login-link">登录</RouterLink>
       </div>
     </aside>
 
@@ -41,7 +42,9 @@
 
 <script setup lang="ts">
 import { BookOpen, Clock3, Star } from 'lucide-vue-next'
+import { storeToRefs } from 'pinia'
 import { useUserStore } from './stores/user'
 
-const { userId } = useUserStore()
+const userStore = useUserStore()
+const { userId, nickname, loggedIn } = storeToRefs(userStore)
 </script>

@@ -1,9 +1,12 @@
 package com.xinglin.video.common;
 
+import org.slf4j.MDC;
+
 public class ApiResponse<T> {
     private int code;
     private String message;
     private T data;
+    private String traceId;
 
     public ApiResponse() {
     }
@@ -12,6 +15,7 @@ public class ApiResponse<T> {
         this.code = code;
         this.message = message;
         this.data = data;
+        this.traceId = MDC.get("traceId");
     }
 
     public static <T> ApiResponse<T> success(T data) {
@@ -44,5 +48,13 @@ public class ApiResponse<T> {
 
     public void setData(T data) {
         this.data = data;
+    }
+
+    public String getTraceId() {
+        return traceId;
+    }
+
+    public void setTraceId(String traceId) {
+        this.traceId = traceId;
     }
 }

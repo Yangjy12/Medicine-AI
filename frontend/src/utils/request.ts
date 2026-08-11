@@ -9,7 +9,14 @@ const request = axios.create({
 
 request.interceptors.request.use((config) => {
   const user = useUserStore()
-  config.headers['X-User-Id'] = String(user.userId)
+  const traceId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 10)}`
+  config.headers['X-Trace-Id'] = traceId
+  if (user.accessToken) {
+    config.headers.Authorization = `Bearer ${user.accessToken}`
+  }
+  if (user.userId) {
+    config.headers['X-User-Id'] = String(user.userId)
+  }
   return config
 })
 

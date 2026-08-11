@@ -1,9 +1,11 @@
 # 杏林学堂 Medicine-AI
 
-本仓库当前实现“杏林学堂——中医学习系统”的视频学习中心模块，包含 Spring Boot 后端、Vue 3 前端和 ECS 单机 Docker 部署配置。
+本仓库实现“杏林学堂——中医学习系统”的核心基础模块，当前包括视频学习中心、用户服务、前端页面和 ECS 单机 Docker 部署配置。
 
 ## 已实现功能
 
+- 用户注册 / 登录 / JWT 鉴权
+- 用户资料、每日签到、积分账户、积分流水
 - 视频学习首页
 - 分类筛选
 - 关键词搜索
@@ -17,23 +19,32 @@
 - 收藏 / 取消收藏
 - 后台视频新增、编辑、上下架接口
 - MySQL 持久化
-- Redis 播放去重与搜索词统计
-- RabbitMQ 学习完成事件
+- Redis 播放去重、登录限流、签到 Bitmap、积分幂等
+- RabbitMQ 视频学习完成事件与积分消费
 - Caffeine 本地详情缓存
+- traceId 请求日志、业务日志、异常日志
 
 ## 目录结构
 
 ```text
 Medicine-AI/
+  backend/user-service/    Spring Boot 用户服务
   backend/video-service/   Spring Boot 视频服务
-  frontend/                Vue 3 视频学习中心
+  frontend/                Vue 3 前端
   deploy/nginx/            Nginx 反向代理配置
   docker-compose.yml       ECS 单机部署编排
 ```
 
 ## 本地启动
 
-后端：
+用户服务：
+
+```bash
+cd backend/user-service
+mvn spring-boot:run
+```
+
+视频服务：
 
 ```bash
 cd backend/video-service
@@ -85,7 +96,14 @@ vim .env
 
 ## 演示登录
 
-第一阶段尚未接入用户服务，前端默认通过请求头 `X-User-Id: 10001` 模拟登录用户。等用户服务完成后，将替换为 JWT 鉴权。
+系统启动后会自动初始化一个演示账号：
+
+```text
+账号：student001
+密码：abc123456
+```
+
+前端登录后会使用 JWT 调用用户服务，并临时透传 `X-User-Id` 给视频服务以兼容现有视频学习接口。后续接入统一网关后，会由网关解析 JWT 并向内部服务透传可信用户身份。
 
 ## 视频资源
 

@@ -29,6 +29,8 @@ spring:
     password: ${RABBITMQ_PASSWORD:xinglin}
 
 logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{traceId:-},%X{userId:-}] %logger{36} - %msg%n"
   level:
     com.xinglin.video: INFO
     org.hibernate.SQL: WARN
