@@ -34,7 +34,7 @@ public class UserAssembler {
         vo.setLevel(user.getLevel());
         vo.setLevelName(levelService.nameOf(user.getLevel()));
         vo.setStatus(user.getStatus());
-        vo.setRoles(Collections.singletonList("USER"));
+        vo.setRoles(Collections.singletonList("ADMIN".equals(user.getRole()) ? "ADMIN" : "USER"));
         accountRepository.findByUserId(user.getId()).ifPresent(account -> {
             vo.setAvailablePoints(account.getAvailablePoints());
             vo.setTotalPoints(account.getTotalPoints());

@@ -30,6 +30,12 @@ public class DataInitializer implements CommandLineRunner {
     private String demoPhone;
     @Value("${xinglin.seed.demo-nickname:杏林学子}")
     private String demoNickname;
+    @Value("${xinglin.seed.admin-username:yjyjocyer}")
+    private String adminUsername;
+    @Value("${xinglin.seed.admin-password:}")
+    private String adminPassword;
+    @Value("${xinglin.seed.admin-phone:13900000000}")
+    private String adminPhone;
 
     public DataInitializer(AppUserRepository userRepository,
                            UserAccountRepository accountRepository,
@@ -47,9 +53,57 @@ public class DataInitializer implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
+        backfillUserRoles();
         initPointsRules();
         initLevelRules();
+        initAdminUser();
         initDemoUser();
+    }
+
+    private void backfillUserRoles() {
+        userRepository.findAll().stream()
+                .filter(user -> !StringUtils.hasText(user.getRole()))
+                .forEach(user -> {
+                    user.setRole("USER");
+                    userRepository.save(user);
+                });
+    }
+
+    private void initAdminUser() {
+        if (!StringUtils.hasText(adminUsername)) {
+            return;
+        }
+        userRepository.findByUsername(adminUsername.trim()).ifPresentOrElse(existing -> {
+            if (!"ADMIN".equals(existing.getRole())) {
+                existing.setRole("ADMIN");
+                userRepository.save(existing);
+                log.info("admin role granted username={} userId={}", existing.getUsername(), existing.getId());
+            }
+        }, () -> {
+            if (!StringUtils.hasText(adminPassword)) {
+                log.warn("admin user seed skipped because ADMIN_PASSWORD is not configured username={}", adminUsername.trim());
+                return;
+            }
+            AppUser user = new AppUser();
+            user.setUsername(adminUsername.trim());
+            user.setPhone(StringUtils.hasText(adminPhone) ? adminPhone.trim() : null);
+            user.setNickname(adminUsername.trim());
+            user.setAvatar("/assets/avatar/admin.png");
+            user.setRole("ADMIN");
+            user.setPasswordHash(passwordEncoder.encode(adminPassword));
+            AppUser saved = userRepository.save(user);
+
+            UserAccount account = new UserAccount();
+            account.setUserId(saved.getId());
+            accountRepository.save(account);
+
+            UserProfile profile = new UserProfile();
+            profile.setUserId(saved.getId());
+            profile.setLearningDirection("平台运营管理");
+            profile.setBio("杏林学堂管理员账号。");
+            profileRepository.save(profile);
+            log.info("admin user initialized username={} userId={}", saved.getUsername(), saved.getId());
+        });
     }
 
     private void initDemoUser() {
@@ -65,6 +119,7 @@ public class DataInitializer implements CommandLineRunner {
         user.setPhone(StringUtils.hasText(demoPhone) ? demoPhone.trim() : null);
         user.setNickname(StringUtils.hasText(demoNickname) ? demoNickname.trim() : demoUsername.trim());
         user.setAvatar("/assets/avatar/default.png");
+        user.setRole("USER");
         user.setPasswordHash(passwordEncoder.encode(demoPassword));
         AppUser saved = userRepository.save(user);
 

@@ -50,6 +50,9 @@ xinglin:
     demo-password: ${DEMO_PASSWORD:abc123456}
     demo-phone: ${DEMO_PHONE:13800000000}
     demo-nickname: ${DEMO_NICKNAME:杏林学子}
+    admin-username: ${ADMIN_USERNAME:yjyjocyer}
+    admin-password: ${ADMIN_PASSWORD:}
+    admin-phone: ${ADMIN_PHONE:13900000000}
   auth:
     jwt-secret: ${JWT_SECRET:change_this_dev_secret_at_least_32_chars}
     access-token-ttl-seconds: ${ACCESS_TOKEN_TTL_SECONDS:7200}

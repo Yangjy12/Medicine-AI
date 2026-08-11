@@ -22,9 +22,9 @@
           <Star :size="18" />
           <span>我的收藏</span>
         </RouterLink>
-        <RouterLink to="/admin" class="nav-item">
+        <RouterLink v-if="loggedIn" to="/admin" class="nav-item">
           <Settings :size="18" />
-          <span>数据维护</span>
+          <span>{{ isAdmin ? '数据维护' : '上传课程' }}</span>
         </RouterLink>
       </nav>
 
@@ -50,5 +50,5 @@ import { storeToRefs } from 'pinia'
 import { useUserStore } from './stores/user'
 
 const userStore = useUserStore()
-const { userId, nickname, loggedIn } = storeToRefs(userStore)
+const { userId, nickname, loggedIn, isAdmin } = storeToRefs(userStore)
 </script>

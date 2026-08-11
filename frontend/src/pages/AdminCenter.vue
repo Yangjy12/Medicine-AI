@@ -1,12 +1,19 @@
 <template>
   <section class="admin-page">
+    <el-result v-if="!loggedIn" title="请先登录" sub-title="登录后可以上传课程视频">
+      <template #extra>
+        <el-button type="primary" @click="router.push('/login')">去登录</el-button>
+      </template>
+    </el-result>
+
+    <template v-else>
     <header class="simple-header">
-      <p>运营后台</p>
-      <h1>数据维护中心</h1>
+      <p>{{ isAdmin ? '运营后台' : '课程共建' }}</p>
+      <h1>{{ isAdmin ? '数据维护中心' : '上传课程' }}</h1>
     </header>
 
     <el-tabs v-model="activeTab" class="admin-tabs">
-      <el-tab-pane label="视频分类" name="categories">
+      <el-tab-pane v-if="isAdmin" label="视频分类" name="categories">
         <div class="admin-toolbar">
           <el-button type="primary" @click="openCategoryDialog()">新增分类</el-button>
           <el-button @click="loadCategories">刷新</el-button>
@@ -34,14 +41,18 @@
 
       <el-tab-pane label="课程视频" name="videos">
         <div class="admin-toolbar">
-          <el-input v-model="videoQuery.keyword" clearable placeholder="搜索标题、讲师、标签" class="toolbar-input" @keyup.enter="loadVideos" />
-          <el-select v-model="videoQuery.categoryId" clearable placeholder="全部分类" class="toolbar-select">
+          <el-input v-if="isAdmin" v-model="videoQuery.keyword" clearable placeholder="搜索标题、讲师、标签" class="toolbar-input" @keyup.enter="loadVideos" />
+          <el-select v-if="isAdmin" v-model="videoQuery.categoryId" clearable placeholder="全部分类" class="toolbar-select">
             <el-option v-for="item in categories" :key="item.id" :label="item.name" :value="item.id" />
           </el-select>
-          <el-button type="primary" @click="loadVideos">查询</el-button>
-          <el-button @click="openVideoDialog()">新增课程</el-button>
+          <el-button v-if="isAdmin" type="primary" @click="loadVideos">查询</el-button>
+          <el-button type="primary" @click="openVideoDialog()">{{ isAdmin ? '新增课程' : '上传课程' }}</el-button>
         </div>
-        <el-table :data="videos" v-loading="videoLoading" border>
+        <section v-if="!isAdmin" class="admin-block upload-only">
+          <h2>提交课程视频</h2>
+          <p>上传后的课程会进入草稿状态，等待管理员审核上线。</p>
+        </section>
+        <el-table v-if="isAdmin" :data="videos" v-loading="videoLoading" border>
           <el-table-column prop="id" label="ID" width="80" />
           <el-table-column prop="title" label="标题" min-width="220" show-overflow-tooltip />
           <el-table-column prop="categoryName" label="分类" width="130" />
@@ -66,6 +77,7 @@
           </el-table-column>
         </el-table>
         <el-pagination
+          v-if="isAdmin"
           class="admin-pagination"
           layout="prev, pager, next, total"
           :page-size="videoQuery.pageSize"
@@ -75,7 +87,7 @@
         />
       </el-tab-pane>
 
-      <el-tab-pane label="用户规则" name="rules">
+      <el-tab-pane v-if="isAdmin" label="用户规则" name="rules">
         <div class="rule-grid">
           <section class="admin-block">
             <div class="admin-block-title">
@@ -148,7 +160,7 @@
         <el-form-item label="封面地址" class="form-wide"><el-input v-model="videoForm.coverUrl" /></el-form-item>
         <el-form-item label="视频地址" class="form-wide"><el-input v-model="videoForm.videoUrl" /></el-form-item>
         <el-form-item label="标签" class="form-wide"><el-input v-model="videoForm.tags" placeholder="多个标签用逗号分隔" /></el-form-item>
-        <el-form-item label="状态">
+        <el-form-item v-if="isAdmin" label="状态">
           <el-select v-model="videoForm.status">
             <el-option label="草稿" value="DRAFT" />
             <el-option label="上线" value="ONLINE" />
@@ -192,17 +204,24 @@
         <el-button type="primary" :loading="saving" @click="saveLevelRule">保存</el-button>
       </template>
     </el-dialog>
+    </template>
   </section>
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { type Category, type SaveCategoryPayload, type SaveVideoPayload, type VideoCard, videoApi } from '../api/video'
 import { type LevelRule, type PointsRule, userApi } from '../api/user'
 import { formatDuration } from '../utils/format'
+import { useUserStore } from '../stores/user'
 
-const activeTab = ref('categories')
+const router = useRouter()
+const userStore = useUserStore()
+const loggedIn = computed(() => userStore.loggedIn)
+const isAdmin = computed(() => userStore.isAdmin)
+const activeTab = ref(userStore.isAdmin ? 'categories' : 'videos')
 const categoryLoading = ref(false)
 const videoLoading = ref(false)
 const ruleLoading = ref(false)
@@ -244,13 +263,16 @@ const levelRuleForm = reactive<LevelRule>(emptyLevelRuleForm())
 const loadCategories = async () => {
   categoryLoading.value = true
   try {
-    categories.value = await videoApi.adminCategories()
+    categories.value = isAdmin.value ? await videoApi.adminCategories() : await videoApi.categories()
   } finally {
     categoryLoading.value = false
   }
 }
 
 const loadVideos = async () => {
+  if (!isAdmin.value) {
+    return
+  }
   videoLoading.value = true
   try {
     const result = await videoApi.adminVideos(videoQuery)
@@ -262,6 +284,9 @@ const loadVideos = async () => {
 }
 
 const loadRules = async () => {
+  if (!isAdmin.value) {
+    return
+  }
   ruleLoading.value = true
   try {
     const [points, levels] = await Promise.all([userApi.pointsRules(), userApi.levelRules()])
@@ -300,7 +325,7 @@ const toggleCategory = async (row: Category) => {
 
 const openVideoDialog = async (row?: VideoCard) => {
   Object.assign(videoForm, emptyVideoForm())
-  if (row?.id) {
+  if (row?.id && isAdmin.value) {
     const detail = await videoApi.adminVideoDetail(row.id)
     Object.assign(videoForm, {
       id: detail.id,
@@ -321,8 +346,13 @@ const openVideoDialog = async (row?: VideoCard) => {
 const saveVideo = async () => {
   saving.value = true
   try {
-    await videoApi.saveVideo(videoForm)
-    ElMessage.success('课程已保存')
+    if (isAdmin.value) {
+      await videoApi.saveVideo(videoForm)
+      ElMessage.success('课程已保存')
+    } else {
+      await videoApi.uploadVideo({ ...videoForm, status: 'DRAFT' })
+      ElMessage.success('课程已提交，等待管理员审核')
+    }
     videoDialogVisible.value = false
     await loadVideos()
   } finally {
@@ -392,6 +422,9 @@ const videoStatusTag = (status: string) => {
 }
 
 onMounted(async () => {
+  if (!loggedIn.value) {
+    return
+  }
   await Promise.all([loadCategories(), loadRules()])
   await loadVideos()
 })

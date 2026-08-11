@@ -10,7 +10,8 @@ export const useUserStore = defineStore('user', {
   getters: {
     userId: (state) => state.user?.id,
     nickname: (state) => state.user?.nickname || '未登录',
-    loggedIn: (state) => Boolean(state.accessToken && state.user)
+    loggedIn: (state) => Boolean(state.accessToken && state.user),
+    isAdmin: (state) => Boolean(state.user?.roles?.includes('ADMIN'))
   },
   actions: {
     setSession(accessToken: string, refreshToken: string, user: UserInfo) {

@@ -83,7 +83,8 @@ public class AuthService {
         AppUser user = new AppUser();
         user.setUsername(request.getUsername().trim());
         user.setPhone(StringUtils.hasText(request.getPhone()) ? request.getPhone().trim() : null);
-        user.setNickname(stripHtml(request.getNickname().trim()));
+        user.setNickname(stripHtml(request.getUsername().trim()));
+        user.setRole("USER");
         user.setAvatar("/assets/avatar/default.png");
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         AppUser saved = userRepository.save(user);

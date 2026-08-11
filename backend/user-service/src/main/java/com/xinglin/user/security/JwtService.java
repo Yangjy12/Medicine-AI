@@ -37,7 +37,7 @@ public class JwtService {
         Map<String, Object> payload = new LinkedHashMap<>();
         payload.put("sub", String.valueOf(user.getId()));
         payload.put("username", user.getUsername());
-        payload.put("roles", Collections.singletonList("USER"));
+        payload.put("roles", Collections.singletonList(normalizeRole(user.getRole())));
         payload.put("tokenVersion", user.getTokenVersion());
         payload.put("iat", now);
         payload.put("exp", exp);
@@ -111,6 +111,10 @@ public class JwtService {
         } catch (Exception ex) {
             throw new IllegalStateException("JWT签名失败", ex);
         }
+    }
+
+    private String normalizeRole(String role) {
+        return "ADMIN".equals(role) ? "ADMIN" : "USER";
     }
 
     private boolean constantTimeEquals(String a, String b) {

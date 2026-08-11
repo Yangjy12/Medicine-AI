@@ -344,6 +344,14 @@ public class VideoService {
     }
 
     @Transactional
+    public VideoDetailVO uploadVideo(SaveVideoRequest request, Long userId) {
+        log.info("user upload video title={} userId={}", request.getTitle(), userId);
+        request.setId(null);
+        request.setStatus("DRAFT");
+        return saveVideo(request, userId);
+    }
+
+    @Transactional
     public void updateStatus(Long videoId, String status) {
         log.info("admin update video status videoId={} status={}", videoId, status);
         Video video = videoRepository.findById(videoId).orElseThrow(() -> new BusinessException(404, "视频不存在"));

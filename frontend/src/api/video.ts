@@ -90,6 +90,7 @@ export interface SaveVideoPayload {
 
 export const videoApi = {
   home: () => request.get<unknown, HomeData>('/api/video/home'),
+  categories: () => request.get<unknown, Category[]>('/api/video/categories'),
   list: (params: QueryParams) => request.get<unknown, PageResult<VideoCard>>('/api/video/list', { params }),
   search: (params: QueryParams) => request.get<unknown, PageResult<VideoCard>>('/api/video/search', { params }),
   detail: (id: number) => request.get<unknown, VideoDetail>(`/api/video/${id}`),
@@ -111,6 +112,7 @@ export const videoApi = {
   adminVideos: (params: QueryParams) => request.get<unknown, PageResult<VideoCard>>('/api/video/admin/videos', { params }),
   adminVideoDetail: (id: number) => request.get<unknown, VideoDetail>(`/api/video/admin/videos/${id}`),
   saveVideo: (payload: SaveVideoPayload) => request.post<unknown, VideoDetail>('/api/video/admin/videos', payload),
+  uploadVideo: (payload: SaveVideoPayload) => request.post<unknown, VideoDetail>('/api/video/uploads', payload),
   onlineVideo: (id: number) => request.post<unknown, void>(`/api/video/admin/videos/${id}/online`),
   offlineVideo: (id: number) => request.post<unknown, void>(`/api/video/admin/videos/${id}/offline`)
 }

@@ -67,6 +67,9 @@ public class AuthFilter extends OncePerRequestFilter {
             if (!user.getTokenVersion().equals(claims.getTokenVersion())) {
                 throw new BusinessException(401, "登录状态已失效，请重新登录");
             }
+            if (request.getRequestURI().startsWith("/api/user/admin/") && !"ADMIN".equals(user.getRole())) {
+                throw new BusinessException(403, "无管理员权限");
+            }
             UserContext.setUserId(user.getId());
             MDC.put("userId", String.valueOf(user.getId()));
             filterChain.doFilter(request, response);

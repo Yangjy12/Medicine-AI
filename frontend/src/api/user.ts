@@ -59,7 +59,7 @@ export interface LevelRule {
 export const userApi = {
   login: (payload: { account: string; password: string; deviceId?: string }) =>
     request.post<unknown, LoginResult>('/api/user/login', payload),
-  register: (payload: { username: string; phone?: string; password: string; nickname: string }) =>
+  register: (payload: { username: string; phone?: string; password: string }) =>
     request.post<unknown, UserInfo>('/api/user/register', payload),
   me: () => request.get<unknown, UserInfo>('/api/user/me'),
   logout: () => request.post<unknown, void>('/api/user/logout'),

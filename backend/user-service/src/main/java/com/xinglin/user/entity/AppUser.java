@@ -25,6 +25,8 @@ public class AppUser {
     private String passwordHash;
     @Column(nullable = false, length = 64)
     private String nickname;
+    @Column(nullable = false, length = 32, columnDefinition = "varchar(32) default 'USER'")
+    private String role = "USER";
     @Column(length = 512)
     private String avatar;
     @Column(nullable = false)
@@ -55,6 +57,8 @@ public class AppUser {
     public void setPasswordHash(String passwordHash) { this.passwordHash = passwordHash; }
     public String getNickname() { return nickname; }
     public void setNickname(String nickname) { this.nickname = nickname; }
+    public String getRole() { return role; }
+    public void setRole(String role) { this.role = role; }
     public String getAvatar() { return avatar; }
     public void setAvatar(String avatar) { this.avatar = avatar; }
     public Integer getLevel() { return level; }
