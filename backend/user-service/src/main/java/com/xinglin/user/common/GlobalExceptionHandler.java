@@ -5,6 +5,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.validation.BindException;
+import org.springframework.validation.BindingResult;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
@@ -24,8 +25,22 @@ public class GlobalExceptionHandler {
     @ExceptionHandler({MethodArgumentNotValidException.class, BindException.class})
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ApiResponse<Void> handleValidationException(Exception ex) {
-        log.warn("validation failed message={}", ex.getMessage());
-        return ApiResponse.fail(400, "请求参数不合法");
+        String message = resolveValidationMessage(ex);
+        log.warn("validation failed message={} detail={}", message, ex.getMessage());
+        return ApiResponse.fail(400, message);
+    }
+
+    private String resolveValidationMessage(Exception ex) {
+        BindingResult bindingResult = null;
+        if (ex instanceof MethodArgumentNotValidException) {
+            bindingResult = ((MethodArgumentNotValidException) ex).getBindingResult();
+        } else if (ex instanceof BindException) {
+            bindingResult = ((BindException) ex).getBindingResult();
+        }
+        if (bindingResult != null && bindingResult.hasFieldErrors()) {
+            return bindingResult.getFieldErrors().get(0).getDefaultMessage();
+        }
+        return "请求参数不合法";
     }
 
     @ExceptionHandler(DataIntegrityViolationException.class)
