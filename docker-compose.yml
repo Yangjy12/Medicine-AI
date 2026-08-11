@@ -83,14 +83,14 @@ services:
       - xinglin-net
 
   frontend:
-    image: nginx:1.25-alpine
+    build:
+      context: ./frontend
+    image: xinglin/frontend:1.0.0
     container_name: xinglin-frontend
     restart: unless-stopped
     depends_on:
       - video-service
     volumes:
-      - ./frontend/dist:/usr/share/nginx/html:ro
-      - ./deploy/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
       - ./data/media:/data/media:ro
     ports:
       - "80:80"

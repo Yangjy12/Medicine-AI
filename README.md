@@ -58,27 +58,19 @@ http://localhost:5173
 
 1. 安装 Docker 和 Docker Compose。
 2. 拉取仓库到 ECS。
-3. 构建前端静态资源。
-
-```bash
-cd frontend
-npm install
-npm run build
-```
-
-4. 回到仓库根目录启动服务。
+3. 回到仓库根目录启动服务。
 
 ```bash
 docker compose up -d --build
 ```
 
-5. 访问 ECS 公网 IP。
+4. 访问 ECS 公网 IP。
 
 ```text
 http://你的ECS公网IP
 ```
 
-也可以直接使用部署脚本：
+也可以直接使用部署脚本。该脚本不要求 ECS 宿主机安装 Node/npm，前端会在 Docker 镜像构建阶段完成打包：
 
 ```bash
 bash deploy/scripts/deploy-ecs.sh

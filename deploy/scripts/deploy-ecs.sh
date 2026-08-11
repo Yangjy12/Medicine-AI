@@ -20,13 +20,7 @@ if [ ! -f .env ]; then
   echo "==> Created .env from .env.example. Please update passwords before production use."
 fi
 
-echo "==> Building frontend"
-cd frontend
-npm install
-npm run build
-
 echo "==> Starting Docker services"
-cd "${APP_DIR}"
 docker compose up -d --build
 
 echo "==> Deployment finished"
