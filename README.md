@@ -78,6 +78,19 @@ docker compose up -d --build
 http://你的ECS公网IP
 ```
 
+也可以直接使用部署脚本：
+
+```bash
+bash deploy/scripts/deploy-ecs.sh
+```
+
+生产环境第一次启动前请复制并修改 `.env`：
+
+```bash
+cp .env.example .env
+vim .env
+```
+
 ## 演示登录
 
 第一阶段尚未接入用户服务，前端默认通过请求头 `X-User-Id: 10001` 模拟登录用户。等用户服务完成后，将替换为 JWT 鉴权。
