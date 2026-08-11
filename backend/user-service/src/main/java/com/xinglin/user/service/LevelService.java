@@ -1,34 +1,44 @@
 package com.xinglin.user.service;
 
+import com.xinglin.user.entity.LevelRule;
+import com.xinglin.user.repository.LevelRuleRepository;
 import org.springframework.stereotype.Service;
+
+import java.util.Comparator;
+import java.util.List;
 
 @Service
 public class LevelService {
+    private final LevelRuleRepository levelRuleRepository;
+
+    public LevelService(LevelRuleRepository levelRuleRepository) {
+        this.levelRuleRepository = levelRuleRepository;
+    }
+
     public int levelOf(long totalPoints) {
-        if (totalPoints >= 4000) return 5;
-        if (totalPoints >= 1500) return 4;
-        if (totalPoints >= 500) return 3;
-        if (totalPoints >= 100) return 2;
-        return 1;
+        return levelRuleRepository.findByEnabledOrderByMinTotalPointsDesc(1).stream()
+                .filter(rule -> totalPoints >= rule.getMinTotalPoints())
+                .findFirst()
+                .map(LevelRule::getLevel)
+                .orElse(1);
     }
 
     public String nameOf(int level) {
-        switch (level) {
-            case 5: return "杏林达人";
-            case 4: return "岐黄进阶者";
-            case 3: return "经方研习者";
-            case 2: return "闻道学子";
-            default: return "初入杏林";
-        }
+        return levelRuleRepository.findByLevelAndEnabled(level, 1)
+                .map(LevelRule::getLevelName)
+                .orElse("未配置等级");
     }
 
     public long nextLevelPoints(int level) {
-        switch (level) {
-            case 1: return 100;
-            case 2: return 500;
-            case 3: return 1500;
-            case 4: return 4000;
-            default: return 4000;
-        }
+        List<LevelRule> rules = levelRuleRepository.findByEnabledOrderByLevelAsc(1);
+        return rules.stream()
+                .filter(rule -> rule.getLevel() > level)
+                .min(Comparator.comparing(LevelRule::getLevel))
+                .map(LevelRule::getMinTotalPoints)
+                .orElseGet(() -> rules.stream()
+                        .filter(rule -> rule.getLevel().equals(level))
+                        .findFirst()
+                        .map(LevelRule::getMinTotalPoints)
+                        .orElse(0L));
     }
 }

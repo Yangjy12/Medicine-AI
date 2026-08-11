@@ -1,16 +1,14 @@
 package com.xinglin.user.config;
 
-import com.xinglin.user.entity.AppUser;
-import com.xinglin.user.entity.UserAccount;
-import com.xinglin.user.entity.UserProfile;
-import com.xinglin.user.repository.AppUserRepository;
-import com.xinglin.user.repository.UserAccountRepository;
-import com.xinglin.user.repository.UserProfileRepository;
+import com.xinglin.user.entity.*;
+import com.xinglin.user.repository.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Component;
+import org.springframework.util.StringUtils;
 
 @Component
 public class DataInitializer implements CommandLineRunner {
@@ -18,29 +16,56 @@ public class DataInitializer implements CommandLineRunner {
     private final AppUserRepository userRepository;
     private final UserAccountRepository accountRepository;
     private final UserProfileRepository profileRepository;
+    private final PointsRuleRepository pointsRuleRepository;
+    private final LevelRuleRepository levelRuleRepository;
     private final BCryptPasswordEncoder passwordEncoder;
+
+    @Value("${xinglin.seed.demo-user-enabled:true}")
+    private boolean demoUserEnabled;
+    @Value("${xinglin.seed.demo-username:student001}")
+    private String demoUsername;
+    @Value("${xinglin.seed.demo-password:abc123456}")
+    private String demoPassword;
+    @Value("${xinglin.seed.demo-phone:13800000000}")
+    private String demoPhone;
+    @Value("${xinglin.seed.demo-nickname:杏林学子}")
+    private String demoNickname;
 
     public DataInitializer(AppUserRepository userRepository,
                            UserAccountRepository accountRepository,
                            UserProfileRepository profileRepository,
+                           PointsRuleRepository pointsRuleRepository,
+                           LevelRuleRepository levelRuleRepository,
                            BCryptPasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
         this.accountRepository = accountRepository;
         this.profileRepository = profileRepository;
+        this.pointsRuleRepository = pointsRuleRepository;
+        this.levelRuleRepository = levelRuleRepository;
         this.passwordEncoder = passwordEncoder;
     }
 
     @Override
     public void run(String... args) {
-        if (userRepository.existsByUsername("student001")) {
+        initPointsRules();
+        initLevelRules();
+        initDemoUser();
+    }
+
+    private void initDemoUser() {
+        if (!demoUserEnabled) {
+            log.info("demo user seed skipped by configuration");
+            return;
+        }
+        if (!StringUtils.hasText(demoUsername) || userRepository.existsByUsername(demoUsername)) {
             return;
         }
         AppUser user = new AppUser();
-        user.setUsername("student001");
-        user.setPhone("13800000000");
-        user.setNickname("杏林学子");
+        user.setUsername(demoUsername.trim());
+        user.setPhone(StringUtils.hasText(demoPhone) ? demoPhone.trim() : null);
+        user.setNickname(StringUtils.hasText(demoNickname) ? demoNickname.trim() : demoUsername.trim());
         user.setAvatar("/assets/avatar/default.png");
-        user.setPasswordHash(passwordEncoder.encode("abc123456"));
+        user.setPasswordHash(passwordEncoder.encode(demoPassword));
         AppUser saved = userRepository.save(user);
 
         UserAccount account = new UserAccount();
@@ -52,6 +77,48 @@ public class DataInitializer implements CommandLineRunner {
         profile.setLearningDirection("中医基础理论");
         profile.setBio("正在系统学习中医知识。");
         profileRepository.save(profile);
-        log.info("demo user initialized username=student001 password=abc123456 userId={}", saved.getId());
+        log.info("demo user initialized username={} userId={}", saved.getUsername(), saved.getId());
+    }
+
+    private void initPointsRules() {
+        if (pointsRuleRepository.count() > 0) {
+            return;
+        }
+        savePointsRule("CHECKIN", 5, "每日签到");
+        savePointsRule("CHECKIN_7_DAYS", 20, "连续签到7天奖励");
+        savePointsRule("VIDEO_FINISH", 10, "完成视频学习");
+        savePointsRule("POST_CREATE", 5, "发布帖子");
+        savePointsRule("COMMENT_CREATE", 2, "发表评论");
+        log.info("default points rules initialized");
+    }
+
+    private void savePointsRule(String bizType, int points, String description) {
+        PointsRule rule = new PointsRule();
+        rule.setBizType(bizType);
+        rule.setPoints(points);
+        rule.setDescription(description);
+        rule.setEnabled(1);
+        pointsRuleRepository.save(rule);
+    }
+
+    private void initLevelRules() {
+        if (levelRuleRepository.count() > 0) {
+            return;
+        }
+        saveLevelRule(1, "初入杏林", 0);
+        saveLevelRule(2, "闻道学子", 100);
+        saveLevelRule(3, "经方研习者", 500);
+        saveLevelRule(4, "岐黄进阶者", 1500);
+        saveLevelRule(5, "杏林达人", 4000);
+        log.info("default level rules initialized");
+    }
+
+    private void saveLevelRule(int level, String name, long minTotalPoints) {
+        LevelRule rule = new LevelRule();
+        rule.setLevel(level);
+        rule.setLevelName(name);
+        rule.setMinTotalPoints(minTotalPoints);
+        rule.setEnabled(1);
+        levelRuleRepository.save(rule);
     }
 }

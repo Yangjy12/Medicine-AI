@@ -6,6 +6,7 @@ export interface Category {
   icon: string
   sort: number
   videoCount: number
+  status: number
 }
 
 export interface ProgressInfo {
@@ -28,6 +29,7 @@ export interface VideoCard {
   collectCount: number
   progressPercent: number
   finished: boolean
+  status: string
   publishTime: string
 }
 
@@ -65,6 +67,27 @@ export interface QueryParams {
   pageSize?: number
 }
 
+export interface SaveCategoryPayload {
+  id?: number
+  name: string
+  icon?: string
+  sort: number
+  status: number
+}
+
+export interface SaveVideoPayload {
+  id?: number
+  title: string
+  description?: string
+  categoryId?: number
+  lecturer?: string
+  coverUrl: string
+  videoUrl: string
+  duration: number
+  tags?: string
+  status: string
+}
+
 export const videoApi = {
   home: () => request.get<unknown, HomeData>('/api/video/home'),
   list: (params: QueryParams) => request.get<unknown, PageResult<VideoCard>>('/api/video/list', { params }),
@@ -80,5 +103,14 @@ export const videoApi = {
   unfavorite: (id: number) => request.delete<unknown, void>(`/api/video/${id}/favorite`),
   history: (params: QueryParams) => request.get<unknown, PageResult<VideoCard>>('/api/video/learning/history', { params }),
   favorites: (params: QueryParams) => request.get<unknown, PageResult<VideoCard>>('/api/video/favorites', { params }),
-  related: (id: number, limit = 6) => request.get<unknown, VideoCard[]>(`/api/video/${id}/related`, { params: { limit } })
+  related: (id: number, limit = 6) => request.get<unknown, VideoCard[]>(`/api/video/${id}/related`, { params: { limit } }),
+  adminCategories: () => request.get<unknown, Category[]>('/api/video/admin/categories'),
+  saveCategory: (payload: SaveCategoryPayload) => request.post<unknown, Category>('/api/video/admin/categories', payload),
+  enableCategory: (id: number) => request.post<unknown, void>(`/api/video/admin/categories/${id}/enable`),
+  disableCategory: (id: number) => request.post<unknown, void>(`/api/video/admin/categories/${id}/disable`),
+  adminVideos: (params: QueryParams) => request.get<unknown, PageResult<VideoCard>>('/api/video/admin/videos', { params }),
+  adminVideoDetail: (id: number) => request.get<unknown, VideoDetail>(`/api/video/admin/videos/${id}`),
+  saveVideo: (payload: SaveVideoPayload) => request.post<unknown, VideoDetail>('/api/video/admin/videos', payload),
+  onlineVideo: (id: number) => request.post<unknown, void>(`/api/video/admin/videos/${id}/online`),
+  offlineVideo: (id: number) => request.post<unknown, void>(`/api/video/admin/videos/${id}/offline`)
 }

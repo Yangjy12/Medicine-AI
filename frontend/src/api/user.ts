@@ -40,6 +40,22 @@ export interface PointsAccount {
   nextLevelPoints: number
 }
 
+export interface PointsRule {
+  id?: number
+  bizType: string
+  points: number
+  description?: string
+  enabled: number
+}
+
+export interface LevelRule {
+  id?: number
+  level: number
+  levelName: string
+  minTotalPoints: number
+  enabled: number
+}
+
 export const userApi = {
   login: (payload: { account: string; password: string; deviceId?: string }) =>
     request.post<unknown, LoginResult>('/api/user/login', payload),
@@ -48,5 +64,9 @@ export const userApi = {
   me: () => request.get<unknown, UserInfo>('/api/user/me'),
   logout: () => request.post<unknown, void>('/api/user/logout'),
   checkin: () => request.post<unknown, CheckinResult>('/api/user/checkin'),
-  pointsAccount: () => request.get<unknown, PointsAccount>('/api/user/points/account')
+  pointsAccount: () => request.get<unknown, PointsAccount>('/api/user/points/account'),
+  pointsRules: () => request.get<unknown, PointsRule[]>('/api/user/admin/rules/points'),
+  savePointsRule: (payload: PointsRule) => request.post<unknown, PointsRule>('/api/user/admin/rules/points', payload),
+  levelRules: () => request.get<unknown, LevelRule[]>('/api/user/admin/rules/levels'),
+  saveLevelRule: (payload: LevelRule) => request.post<unknown, LevelRule>('/api/user/admin/rules/levels', payload)
 }

@@ -22,6 +22,10 @@
           <Star :size="18" />
           <span>我的收藏</span>
         </RouterLink>
+        <RouterLink to="/admin" class="nav-item">
+          <Settings :size="18" />
+          <span>数据维护</span>
+        </RouterLink>
       </nav>
 
       <div class="login-card">
@@ -41,7 +45,7 @@
 </template>
 
 <script setup lang="ts">
-import { BookOpen, Clock3, Star } from 'lucide-vue-next'
+import { BookOpen, Clock3, Settings, Star } from 'lucide-vue-next'
 import { storeToRefs } from 'pinia'
 import { useUserStore } from './stores/user'
 

@@ -4,7 +4,7 @@
       <div class="auth-copy">
         <p>杏林学堂</p>
         <h1>登录后同步学习进度、签到积分和收藏课程</h1>
-        <span>演示账号：student001 / abc123456</span>
+        <span>可注册新账号，或使用数据库中已初始化的账号登录</span>
       </div>
 
       <el-tabs v-model="mode" stretch>
@@ -55,8 +55,8 @@ const mode = ref('login')
 const loading = ref(false)
 
 const loginForm = reactive({
-  account: 'student001',
-  password: 'abc123456',
+  account: '',
+  password: '',
   deviceId: 'web'
 })
 

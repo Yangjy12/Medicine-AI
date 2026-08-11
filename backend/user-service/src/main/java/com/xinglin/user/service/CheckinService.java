@@ -24,17 +24,20 @@ public class CheckinService {
     private final CheckinRecordRepository checkinRecordRepository;
     private final UserAccountRepository accountRepository;
     private final PointsService pointsService;
+    private final PointsRuleService pointsRuleService;
     private final AuditService auditService;
 
     public CheckinService(StringRedisTemplate redisTemplate,
                           CheckinRecordRepository checkinRecordRepository,
                           UserAccountRepository accountRepository,
                           PointsService pointsService,
+                          PointsRuleService pointsRuleService,
                           AuditService auditService) {
         this.redisTemplate = redisTemplate;
         this.checkinRecordRepository = checkinRecordRepository;
         this.accountRepository = accountRepository;
         this.pointsService = pointsService;
+        this.pointsRuleService = pointsRuleService;
         this.auditService = auditService;
     }
 
@@ -52,7 +55,10 @@ public class CheckinService {
         }
         redisTemplate.opsForValue().setBit(key, offset, true);
         int streak = streakDays(userId, today);
-        int reward = 5 + (streak > 0 && streak % 7 == 0 ? 20 : 0);
+        int reward = pointsRuleService.requireEnabledRule("CHECKIN").getPoints();
+        if (streak > 0 && streak % 7 == 0) {
+            reward += pointsRuleService.requireEnabledRule("CHECKIN_7_DAYS").getPoints();
+        }
 
         if (!checkinRecordRepository.existsByUserIdAndCheckinDate(userId, today)) {
             CheckinRecord record = new CheckinRecord();

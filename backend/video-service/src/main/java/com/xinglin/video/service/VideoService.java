@@ -105,6 +105,29 @@ public class VideoService {
         return new PageResponse<>(records, page, pageSize, result.getTotalElements());
     }
 
+    public PageResponse<VideoCardVO> adminQuery(VideoQueryRequest request, Long adminId) {
+        log.info("admin video query keyword={} categoryId={} sort={} page={} pageSize={} adminId={}",
+                request.getKeyword(), request.getCategoryId(), request.getSort(), request.getPage(), request.getPageSize(), adminId);
+        int page = normalizePage(request.getPage());
+        int pageSize = normalizePageSize(request.getPageSize());
+        Pageable pageable = PageRequest.of(page - 1, pageSize, buildSort(request.getSort()));
+        Page<Video> result = videoRepository.findAll(buildSpecification(request, false), pageable);
+        List<VideoCardVO> records = result.getContent().stream()
+                .map(video -> toCard(video, null))
+                .collect(Collectors.toList());
+        return new PageResponse<>(records, page, pageSize, result.getTotalElements());
+    }
+
+    public VideoDetailVO adminDetail(Long videoId, Long adminId) {
+        log.info("admin video detail query videoId={} adminId={}", videoId, adminId);
+        if (videoId == null || videoId <= 0) {
+            throw new BusinessException(400, "视频ID不合法");
+        }
+        Video video = videoRepository.findById(videoId)
+                .orElseThrow(() -> new BusinessException(404, "视频不存在"));
+        return toDetail(video);
+    }
+
     public VideoDetailVO detail(Long videoId, Long userId) {
         log.info("video detail query videoId={} userId={}", videoId, userId);
         if (videoId == null || videoId <= 0) {
@@ -290,20 +313,29 @@ public class VideoService {
     @Transactional
     public VideoDetailVO saveVideo(SaveVideoRequest request, Long adminId) {
         log.info("admin save video id={} title={} status={} adminId={}", request.getId(), request.getTitle(), request.getStatus(), adminId);
-        Video video = request.getId() == null ? new Video() : videoRepository.findById(request.getId()).orElseGet(Video::new);
-        video.setTitle(request.getTitle());
-        video.setDescription(request.getDescription());
+        if (!categoryRepository.existsById(request.getCategoryId())) {
+            throw new BusinessException(404, "视频分类不存在");
+        }
+        String status = StringUtils.hasText(request.getStatus()) ? request.getStatus().trim().toUpperCase(Locale.ROOT) : "DRAFT";
+        if (!Arrays.asList("DRAFT", "ONLINE", "OFFLINE").contains(status)) {
+            throw new BusinessException(400, "视频状态不合法");
+        }
+        Video video = request.getId() == null
+                ? new Video()
+                : videoRepository.findById(request.getId()).orElseThrow(() -> new BusinessException(404, "视频不存在"));
+        video.setTitle(request.getTitle().trim());
+        video.setDescription(request.getDescription() == null ? null : request.getDescription().trim());
         video.setCategoryId(request.getCategoryId());
-        video.setLecturer(request.getLecturer());
-        video.setCoverUrl(request.getCoverUrl());
-        video.setVideoUrl(request.getVideoUrl());
+        video.setLecturer(request.getLecturer() == null ? null : request.getLecturer().trim());
+        video.setCoverUrl(request.getCoverUrl().trim());
+        video.setVideoUrl(request.getVideoUrl().trim());
         video.setDuration(request.getDuration());
-        video.setTags(request.getTags());
-        video.setStatus(request.getStatus());
+        video.setTags(request.getTags() == null ? null : request.getTags().trim());
+        video.setStatus(status);
         if (video.getCreatedBy() == null) {
             video.setCreatedBy(adminId);
         }
-        if (ONLINE.equals(request.getStatus()) && video.getPublishTime() == null) {
+        if (ONLINE.equals(status) && video.getPublishTime() == null) {
             video.setPublishTime(LocalDateTime.now());
         }
         Video saved = videoRepository.save(video);
@@ -386,6 +418,7 @@ public class VideoService {
         vo.setPlayCount(Optional.ofNullable(video.getPlayCount()).orElse(0L));
         vo.setLikeCount(Optional.ofNullable(video.getLikeCount()).orElse(0L));
         vo.setCollectCount(Optional.ofNullable(video.getCollectCount()).orElse(0L));
+        vo.setStatus(video.getStatus());
         vo.setPublishTime(video.getPublishTime());
         if (userId != null) {
             learningRecordRepository.findByUserIdAndVideoId(userId, video.getId()).ifPresent(record -> {

@@ -12,9 +12,11 @@ import java.util.Map;
 public class VideoLearningPointsConsumer {
     private static final Logger log = LoggerFactory.getLogger(VideoLearningPointsConsumer.class);
     private final PointsService pointsService;
+    private final PointsRuleService pointsRuleService;
 
-    public VideoLearningPointsConsumer(PointsService pointsService) {
+    public VideoLearningPointsConsumer(PointsService pointsService, PointsRuleService pointsRuleService) {
         this.pointsService = pointsService;
+        this.pointsRuleService = pointsRuleService;
     }
 
     @RabbitListener(queues = RabbitConfig.VIDEO_LEARNING_QUEUE)
@@ -24,7 +26,8 @@ public class VideoLearningPointsConsumer {
         String videoId = String.valueOf(event.get("videoId"));
         log.info("mq consume start queue={} eventId={} eventType={} userId={} videoId={}",
                 RabbitConfig.VIDEO_LEARNING_QUEUE, eventId, event.get("eventType"), userId, videoId);
-        pointsService.addPoints(userId, "VIDEO_FINISH", videoId, 10, "完成视频学习");
+        int points = pointsRuleService.requireEnabledRule("VIDEO_FINISH").getPoints();
+        pointsService.addPoints(userId, "VIDEO_FINISH", videoId, points, "完成视频学习");
         log.info("mq consume success queue={} eventId={}", RabbitConfig.VIDEO_LEARNING_QUEUE, eventId);
     }
 }

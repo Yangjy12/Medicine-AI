@@ -44,6 +44,12 @@ management:
         include: health,info,metrics
 
 xinglin:
+  seed:
+    demo-user-enabled: ${DEMO_USER_ENABLED:true}
+    demo-username: ${DEMO_USERNAME:student001}
+    demo-password: ${DEMO_PASSWORD:abc123456}
+    demo-phone: ${DEMO_PHONE:13800000000}
+    demo-nickname: ${DEMO_NICKNAME:杏林学子}
   auth:
     jwt-secret: ${JWT_SECRET:change_this_dev_secret_at_least_32_chars}
     access-token-ttl-seconds: ${ACCESS_TOKEN_TTL_SECONDS:7200}

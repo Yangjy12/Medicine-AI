@@ -18,6 +18,7 @@ public class VideoCardVO {
     private Long collectCount;
     private Integer progressPercent = 0;
     private Boolean finished = false;
+    private String status;
     private LocalDateTime publishTime;
 
     public Long getId() { return id; }
@@ -46,6 +47,8 @@ public class VideoCardVO {
     public void setProgressPercent(Integer progressPercent) { this.progressPercent = progressPercent; }
     public Boolean getFinished() { return finished; }
     public void setFinished(Boolean finished) { this.finished = finished; }
+    public String getStatus() { return status; }
+    public void setStatus(String status) { this.status = status; }
     public LocalDateTime getPublishTime() { return publishTime; }
     public void setPublishTime(LocalDateTime publishTime) { this.publishTime = publishTime; }
 }

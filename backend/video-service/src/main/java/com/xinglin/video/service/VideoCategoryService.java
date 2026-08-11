@@ -1,6 +1,8 @@
 package com.xinglin.video.service;
 
 import com.github.benmanes.caffeine.cache.Cache;
+import com.xinglin.video.common.BusinessException;
+import com.xinglin.video.dto.SaveCategoryRequest;
 import com.xinglin.video.entity.VideoCategory;
 import com.xinglin.video.repository.VideoCategoryRepository;
 import com.xinglin.video.vo.CategoryVO;
@@ -34,13 +36,41 @@ public class VideoCategoryService {
         return categories;
     }
 
-    private CategoryVO toVO(VideoCategory category) {
+    public List<CategoryVO> listAllCategories() {
+        return categoryRepository.findAll().stream()
+                .map(this::toVO)
+                .collect(Collectors.toList());
+    }
+
+    public CategoryVO saveCategory(SaveCategoryRequest request) {
+        VideoCategory category = request.getId() == null
+                ? new VideoCategory()
+                : categoryRepository.findById(request.getId()).orElseThrow(() -> new BusinessException(404, "分类不存在"));
+        category.setName(request.getName().trim());
+        category.setIcon(request.getIcon());
+        category.setSortValue(request.getSort());
+        category.setStatus(request.getStatus() == null ? 1 : request.getStatus());
+        VideoCategory saved = categoryRepository.save(category);
+        simpleListLocalCache.invalidate(CATEGORY_CACHE_KEY);
+        return toVO(saved);
+    }
+
+    public void updateStatus(Long categoryId, Integer status) {
+        VideoCategory category = categoryRepository.findById(categoryId)
+                .orElseThrow(() -> new BusinessException(404, "分类不存在"));
+        category.setStatus(status);
+        categoryRepository.save(category);
+        simpleListLocalCache.invalidate(CATEGORY_CACHE_KEY);
+    }
+
+    public CategoryVO toVO(VideoCategory category) {
         CategoryVO vo = new CategoryVO();
         vo.setId(category.getId());
         vo.setName(category.getName());
         vo.setIcon(category.getIcon());
         vo.setSort(category.getSortValue());
         vo.setVideoCount(0L);
+        vo.setStatus(category.getStatus());
         return vo;
     }
 }
