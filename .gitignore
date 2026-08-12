@@ -4,6 +4,7 @@
 target/
 dist/
 node_modules/
+.m2repo/
 data/
 .env
 *.log

@@ -4,6 +4,10 @@ server:
 spring:
   application:
     name: xinglin-video-service
+  servlet:
+    multipart:
+      max-file-size: ${UPLOAD_MAX_FILE_SIZE:1024MB}
+      max-request-size: ${UPLOAD_MAX_REQUEST_SIZE:1024MB}
   datasource:
     url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:xinglin_video}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
     username: ${MYSQL_USERNAME:root}
@@ -43,3 +47,15 @@ xinglin:
     finish-threshold-percent: 90
     effective-play-seconds: 10
     play-dedup-minutes: 30
+  oss:
+    enabled: ${OSS_ENABLED:false}
+    endpoint: ${OSS_ENDPOINT:}
+    public-endpoint: ${OSS_PUBLIC_ENDPOINT:}
+    public-base-url: ${OSS_PUBLIC_BASE_URL:}
+    bucket: ${OSS_BUCKET:}
+    access-key-id: ${OSS_ACCESS_KEY_ID:}
+    access-key-secret: ${OSS_ACCESS_KEY_SECRET:}
+    video-dir: ${OSS_VIDEO_DIR:videos}
+    cover-dir: ${OSS_COVER_DIR:covers}
+    max-video-size-mb: ${OSS_MAX_VIDEO_SIZE_MB:1024}
+    max-cover-size-mb: ${OSS_MAX_COVER_SIZE_MB:10}

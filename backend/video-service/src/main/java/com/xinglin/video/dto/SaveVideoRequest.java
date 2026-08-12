@@ -19,9 +19,11 @@ public class SaveVideoRequest {
 
     @NotBlank
     private String coverUrl;
+    private String coverObjectKey;
 
     @NotBlank
     private String videoUrl;
+    private String videoObjectKey;
 
     @NotNull
     @Min(1)
@@ -42,8 +44,12 @@ public class SaveVideoRequest {
     public void setLecturer(String lecturer) { this.lecturer = lecturer; }
     public String getCoverUrl() { return coverUrl; }
     public void setCoverUrl(String coverUrl) { this.coverUrl = coverUrl; }
+    public String getCoverObjectKey() { return coverObjectKey; }
+    public void setCoverObjectKey(String coverObjectKey) { this.coverObjectKey = coverObjectKey; }
     public String getVideoUrl() { return videoUrl; }
     public void setVideoUrl(String videoUrl) { this.videoUrl = videoUrl; }
+    public String getVideoObjectKey() { return videoObjectKey; }
+    public void setVideoObjectKey(String videoObjectKey) { this.videoObjectKey = videoObjectKey; }
     public Integer getDuration() { return duration; }
     public void setDuration(Integer duration) { this.duration = duration; }
     public String getTags() { return tags; }

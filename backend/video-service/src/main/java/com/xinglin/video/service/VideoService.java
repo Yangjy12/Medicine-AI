@@ -39,6 +39,7 @@ public class VideoService {
     private final VideoFavoriteRepository favoriteRepository;
     private final VideoLikeRepository likeRepository;
     private final VideoCategoryService categoryService;
+    private final OssStorageService ossStorageService;
     private final Cache<Long, VideoDetailVO> videoDetailLocalCache;
     private final StringRedisTemplate redisTemplate;
     private final RabbitTemplate rabbitTemplate;
@@ -61,6 +62,7 @@ public class VideoService {
                         VideoFavoriteRepository favoriteRepository,
                         VideoLikeRepository likeRepository,
                         VideoCategoryService categoryService,
+                        OssStorageService ossStorageService,
                         Cache<Long, VideoDetailVO> videoDetailLocalCache,
                         StringRedisTemplate redisTemplate,
                         RabbitTemplate rabbitTemplate) {
@@ -70,6 +72,7 @@ public class VideoService {
         this.favoriteRepository = favoriteRepository;
         this.likeRepository = likeRepository;
         this.categoryService = categoryService;
+        this.ossStorageService = ossStorageService;
         this.videoDetailLocalCache = videoDetailLocalCache;
         this.redisTemplate = redisTemplate;
         this.rabbitTemplate = rabbitTemplate;
@@ -328,7 +331,9 @@ public class VideoService {
         video.setCategoryId(request.getCategoryId());
         video.setLecturer(request.getLecturer() == null ? null : request.getLecturer().trim());
         video.setCoverUrl(request.getCoverUrl().trim());
+        video.setCoverObjectKey(cleanNullable(request.getCoverObjectKey()));
         video.setVideoUrl(request.getVideoUrl().trim());
+        video.setVideoObjectKey(cleanNullable(request.getVideoObjectKey()));
         video.setDuration(request.getDuration());
         video.setTags(request.getTags() == null ? null : request.getTags().trim());
         video.setStatus(status);
@@ -377,6 +382,8 @@ public class VideoService {
         likeRepository.deleteByVideoId(videoId);
         videoRepository.delete(video);
         videoDetailLocalCache.invalidate(videoId);
+        ossStorageService.deleteObject(video.getVideoObjectKey());
+        ossStorageService.deleteObject(video.getCoverObjectKey());
         log.info("user upload deleted videoId={} userId={}", videoId, userId);
     }
 
@@ -483,6 +490,8 @@ public class VideoService {
         vo.setPublishTime(card.getPublishTime());
         vo.setDescription(video.getDescription());
         vo.setVideoUrl(video.getVideoUrl());
+        vo.setVideoObjectKey(video.getVideoObjectKey());
+        vo.setCoverObjectKey(video.getCoverObjectKey());
         vo.setStatus(video.getStatus());
         vo.setCreatedAt(video.getCreatedAt());
         vo.setUpdatedAt(video.getUpdatedAt());
@@ -505,6 +514,8 @@ public class VideoService {
         vo.setPublishTime(source.getPublishTime());
         vo.setDescription(source.getDescription());
         vo.setVideoUrl(source.getVideoUrl());
+        vo.setVideoObjectKey(source.getVideoObjectKey());
+        vo.setCoverObjectKey(source.getCoverObjectKey());
         vo.setStatus(source.getStatus());
         vo.setCreatedAt(source.getCreatedAt());
         vo.setUpdatedAt(source.getUpdatedAt());
@@ -526,6 +537,10 @@ public class VideoService {
             return "未分类";
         }
         return categoryRepository.findById(categoryId).map(VideoCategory::getName).orElse("未分类");
+    }
+
+    private String cleanNullable(String value) {
+        return StringUtils.hasText(value) ? value.trim() : null;
     }
 
     private List<String> splitTags(String tags) {

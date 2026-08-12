@@ -7,6 +7,8 @@ import java.util.List;
 public class VideoDetailVO extends VideoCardVO {
     private String description;
     private String videoUrl;
+    private String videoObjectKey;
+    private String coverObjectKey;
     private Boolean liked = false;
     private Boolean collected = false;
     private ProgressVO progress = new ProgressVO(0, 0, false);
@@ -19,6 +21,10 @@ public class VideoDetailVO extends VideoCardVO {
     public void setDescription(String description) { this.description = description; }
     public String getVideoUrl() { return videoUrl; }
     public void setVideoUrl(String videoUrl) { this.videoUrl = videoUrl; }
+    public String getVideoObjectKey() { return videoObjectKey; }
+    public void setVideoObjectKey(String videoObjectKey) { this.videoObjectKey = videoObjectKey; }
+    public String getCoverObjectKey() { return coverObjectKey; }
+    public void setCoverObjectKey(String coverObjectKey) { this.coverObjectKey = coverObjectKey; }
     public Boolean getLiked() { return liked; }
     public void setLiked(Boolean liked) { this.liked = liked; }
     public Boolean getCollected() { return collected; }

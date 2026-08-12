@@ -15,7 +15,9 @@ public class Video {
     private Long categoryId;
     private String lecturer;
     private String coverUrl;
+    private String coverObjectKey;
     private String videoUrl;
+    private String videoObjectKey;
     private Integer duration = 0;
     private String tags;
     private Long playCount = 0L;
@@ -44,8 +46,12 @@ public class Video {
     public void setLecturer(String lecturer) { this.lecturer = lecturer; }
     public String getCoverUrl() { return coverUrl; }
     public void setCoverUrl(String coverUrl) { this.coverUrl = coverUrl; }
+    public String getCoverObjectKey() { return coverObjectKey; }
+    public void setCoverObjectKey(String coverObjectKey) { this.coverObjectKey = coverObjectKey; }
     public String getVideoUrl() { return videoUrl; }
     public void setVideoUrl(String videoUrl) { this.videoUrl = videoUrl; }
+    public String getVideoObjectKey() { return videoObjectKey; }
+    public void setVideoObjectKey(String videoObjectKey) { this.videoObjectKey = videoObjectKey; }
     public Integer getDuration() { return duration; }
     public void setDuration(Integer duration) { this.duration = duration; }
     public String getTags() { return tags; }
