@@ -11,4 +11,6 @@ public interface LearningRecordRepository extends JpaRepository<LearningRecord, 
     Optional<LearningRecord> findByUserIdAndVideoId(Long userId, Long videoId);
 
     Page<LearningRecord> findByUserIdOrderByLastLearnTimeDesc(Long userId, Pageable pageable);
+
+    void deleteByVideoId(Long videoId);
 }

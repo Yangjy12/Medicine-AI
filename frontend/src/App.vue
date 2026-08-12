@@ -22,9 +22,13 @@
           <Star :size="18" />
           <span>我的收藏</span>
         </RouterLink>
-        <RouterLink v-if="loggedIn" to="/admin" class="nav-item">
+        <RouterLink v-if="loggedIn && !isAdmin" to="/uploads" class="nav-item">
+          <UploadCloud :size="18" />
+          <span>我的上传</span>
+        </RouterLink>
+        <RouterLink v-if="loggedIn && isAdmin" to="/admin" class="nav-item">
           <Settings :size="18" />
-          <span>{{ isAdmin ? '数据维护' : '上传课程' }}</span>
+          <span>数据维护</span>
         </RouterLink>
       </nav>
 
@@ -33,6 +37,10 @@
         <div v-if="loggedIn">
           <strong>{{ nickname }}</strong>
           <span>ID: {{ userId }}</span>
+          <button class="logout-link" @click="logout">
+            <LogOut :size="14" />
+            <span>退出登录</span>
+          </button>
         </div>
         <RouterLink v-else to="/login" class="login-link">登录</RouterLink>
       </div>
@@ -45,10 +53,22 @@
 </template>
 
 <script setup lang="ts">
-import { BookOpen, Clock3, Settings, Star } from 'lucide-vue-next'
+import { BookOpen, Clock3, LogOut, Settings, Star, UploadCloud } from 'lucide-vue-next'
 import { storeToRefs } from 'pinia'
+import { useRouter } from 'vue-router'
+import { userApi } from './api/user'
 import { useUserStore } from './stores/user'
 
+const router = useRouter()
 const userStore = useUserStore()
 const { userId, nickname, loggedIn, isAdmin } = storeToRefs(userStore)
+
+const logout = async () => {
+  try {
+    await userApi.logout()
+  } finally {
+    userStore.clearSession()
+    router.push('/login')
+  }
+}
 </script>

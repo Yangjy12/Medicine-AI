@@ -10,5 +10,7 @@ public interface VideoFavoriteRepository extends JpaRepository<VideoFavorite, Lo
 
     void deleteByUserIdAndVideoId(Long userId, Long videoId);
 
+    void deleteByVideoId(Long videoId);
+
     Page<VideoFavorite> findByUserIdOrderByCreatedAtDesc(Long userId, Pageable pageable);
 }

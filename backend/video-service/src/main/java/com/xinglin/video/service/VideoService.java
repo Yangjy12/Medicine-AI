@@ -351,6 +351,35 @@ public class VideoService {
         return saveVideo(request, userId);
     }
 
+    public PageResponse<VideoCardVO> myUploads(Long userId, VideoQueryRequest request) {
+        log.info("user uploads query userId={} page={} pageSize={}", userId, request.getPage(), request.getPageSize());
+        requireLogin(userId);
+        int page = normalizePage(request.getPage());
+        int pageSize = normalizePageSize(request.getPageSize());
+        Page<Video> result = videoRepository.findByCreatedByOrderByCreatedAtDesc(userId, PageRequest.of(page - 1, pageSize));
+        List<VideoCardVO> records = result.getContent().stream()
+                .map(video -> toCard(video, null))
+                .collect(Collectors.toList());
+        return new PageResponse<>(records, page, pageSize, result.getTotalElements());
+    }
+
+    @Transactional
+    public void deleteUpload(Long videoId, Long userId) {
+        log.info("user upload delete request videoId={} userId={}", videoId, userId);
+        requireLogin(userId);
+        Video video = videoRepository.findById(videoId)
+                .orElseThrow(() -> new BusinessException(404, "视频不存在"));
+        if (!userId.equals(video.getCreatedBy())) {
+            throw new BusinessException(403, "只能删除自己上传的视频");
+        }
+        learningRecordRepository.deleteByVideoId(videoId);
+        favoriteRepository.deleteByVideoId(videoId);
+        likeRepository.deleteByVideoId(videoId);
+        videoRepository.delete(video);
+        videoDetailLocalCache.invalidate(videoId);
+        log.info("user upload deleted videoId={} userId={}", videoId, userId);
+    }
+
     @Transactional
     public void updateStatus(Long videoId, String status) {
         log.info("admin update video status videoId={} status={}", videoId, status);

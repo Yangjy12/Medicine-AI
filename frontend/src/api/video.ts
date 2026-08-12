@@ -112,7 +112,9 @@ export const videoApi = {
   adminVideos: (params: QueryParams) => request.get<unknown, PageResult<VideoCard>>('/api/video/admin/videos', { params }),
   adminVideoDetail: (id: number) => request.get<unknown, VideoDetail>(`/api/video/admin/videos/${id}`),
   saveVideo: (payload: SaveVideoPayload) => request.post<unknown, VideoDetail>('/api/video/admin/videos', payload),
+  myUploads: (params: QueryParams) => request.get<unknown, PageResult<VideoCard>>('/api/video/uploads', { params }),
   uploadVideo: (payload: SaveVideoPayload) => request.post<unknown, VideoDetail>('/api/video/uploads', payload),
+  deleteUpload: (id: number) => request.delete<unknown, void>(`/api/video/uploads/${id}`),
   onlineVideo: (id: number) => request.post<unknown, void>(`/api/video/admin/videos/${id}/online`),
   offlineVideo: (id: number) => request.post<unknown, void>(`/api/video/admin/videos/${id}/offline`)
 }

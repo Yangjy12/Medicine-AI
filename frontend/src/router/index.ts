@@ -5,6 +5,7 @@ import LearningHistory from '../pages/video/LearningHistory.vue'
 import FavoriteVideos from '../pages/video/FavoriteVideos.vue'
 import LoginPage from '../pages/LoginPage.vue'
 import AdminCenter from '../pages/AdminCenter.vue'
+import MyUploads from '../pages/MyUploads.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -15,6 +16,7 @@ const router = createRouter({
     { path: '/videos/:id', component: VideoDetail },
     { path: '/learning-history', component: LearningHistory },
     { path: '/favorites', component: FavoriteVideos },
+    { path: '/uploads', component: MyUploads },
     { path: '/admin', component: AdminCenter }
   ],
   scrollBehavior: () => ({ top: 0 })

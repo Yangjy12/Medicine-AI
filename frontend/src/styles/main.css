@@ -121,6 +121,29 @@ button {
   text-decoration: none;
 }
 
+.logout-link {
+  margin-top: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+}
+
+.logout-link:hover {
+  color: var(--redwood);
+}
+
+.logout-link span {
+  display: inline;
+  margin-top: 0;
+  color: inherit;
+  font-size: inherit;
+}
+
 .avatar {
   width: 36px;
   height: 36px;

@@ -5,11 +5,16 @@
         <el-button type="primary" @click="router.push('/login')">去登录</el-button>
       </template>
     </el-result>
+    <el-result v-else-if="!isAdmin" title="无管理员权限" sub-title="普通用户请到我的上传管理自己提交的课程">
+      <template #extra>
+        <el-button type="primary" @click="router.push('/uploads')">去我的上传</el-button>
+      </template>
+    </el-result>
 
     <template v-else>
     <header class="simple-header">
-      <p>{{ isAdmin ? '运营后台' : '课程共建' }}</p>
-      <h1>{{ isAdmin ? '数据维护中心' : '上传课程' }}</h1>
+      <p>运营后台</p>
+      <h1>数据维护中心</h1>
     </header>
 
     <el-tabs v-model="activeTab" class="admin-tabs">
@@ -41,18 +46,14 @@
 
       <el-tab-pane label="课程视频" name="videos">
         <div class="admin-toolbar">
-          <el-input v-if="isAdmin" v-model="videoQuery.keyword" clearable placeholder="搜索标题、讲师、标签" class="toolbar-input" @keyup.enter="loadVideos" />
-          <el-select v-if="isAdmin" v-model="videoQuery.categoryId" clearable placeholder="全部分类" class="toolbar-select">
+          <el-input v-model="videoQuery.keyword" clearable placeholder="搜索标题、讲师、标签" class="toolbar-input" @keyup.enter="loadVideos" />
+          <el-select v-model="videoQuery.categoryId" clearable placeholder="全部分类" class="toolbar-select">
             <el-option v-for="item in categories" :key="item.id" :label="item.name" :value="item.id" />
           </el-select>
-          <el-button v-if="isAdmin" type="primary" @click="loadVideos">查询</el-button>
-          <el-button type="primary" @click="openVideoDialog()">{{ isAdmin ? '新增课程' : '上传课程' }}</el-button>
+          <el-button type="primary" @click="loadVideos">查询</el-button>
+          <el-button @click="openVideoDialog()">新增课程</el-button>
         </div>
-        <section v-if="!isAdmin" class="admin-block upload-only">
-          <h2>提交课程视频</h2>
-          <p>上传后的课程会进入草稿状态，等待管理员审核上线。</p>
-        </section>
-        <el-table v-if="isAdmin" :data="videos" v-loading="videoLoading" border>
+        <el-table :data="videos" v-loading="videoLoading" border>
           <el-table-column prop="id" label="ID" width="80" />
           <el-table-column prop="title" label="标题" min-width="220" show-overflow-tooltip />
           <el-table-column prop="categoryName" label="分类" width="130" />
@@ -77,7 +78,6 @@
           </el-table-column>
         </el-table>
         <el-pagination
-          v-if="isAdmin"
           class="admin-pagination"
           layout="prev, pager, next, total"
           :page-size="videoQuery.pageSize"
@@ -160,7 +160,7 @@
         <el-form-item label="封面地址" class="form-wide"><el-input v-model="videoForm.coverUrl" /></el-form-item>
         <el-form-item label="视频地址" class="form-wide"><el-input v-model="videoForm.videoUrl" /></el-form-item>
         <el-form-item label="标签" class="form-wide"><el-input v-model="videoForm.tags" placeholder="多个标签用逗号分隔" /></el-form-item>
-        <el-form-item v-if="isAdmin" label="状态">
+        <el-form-item label="状态">
           <el-select v-model="videoForm.status">
             <el-option label="草稿" value="DRAFT" />
             <el-option label="上线" value="ONLINE" />
@@ -221,7 +221,7 @@ const router = useRouter()
 const userStore = useUserStore()
 const loggedIn = computed(() => userStore.loggedIn)
 const isAdmin = computed(() => userStore.isAdmin)
-const activeTab = ref(userStore.isAdmin ? 'categories' : 'videos')
+const activeTab = ref('categories')
 const categoryLoading = ref(false)
 const videoLoading = ref(false)
 const ruleLoading = ref(false)
@@ -263,16 +263,13 @@ const levelRuleForm = reactive<LevelRule>(emptyLevelRuleForm())
 const loadCategories = async () => {
   categoryLoading.value = true
   try {
-    categories.value = isAdmin.value ? await videoApi.adminCategories() : await videoApi.categories()
+    categories.value = await videoApi.adminCategories()
   } finally {
     categoryLoading.value = false
   }
 }
 
 const loadVideos = async () => {
-  if (!isAdmin.value) {
-    return
-  }
   videoLoading.value = true
   try {
     const result = await videoApi.adminVideos(videoQuery)
@@ -284,9 +281,6 @@ const loadVideos = async () => {
 }
 
 const loadRules = async () => {
-  if (!isAdmin.value) {
-    return
-  }
   ruleLoading.value = true
   try {
     const [points, levels] = await Promise.all([userApi.pointsRules(), userApi.levelRules()])
@@ -325,7 +319,7 @@ const toggleCategory = async (row: Category) => {
 
 const openVideoDialog = async (row?: VideoCard) => {
   Object.assign(videoForm, emptyVideoForm())
-  if (row?.id && isAdmin.value) {
+  if (row?.id) {
     const detail = await videoApi.adminVideoDetail(row.id)
     Object.assign(videoForm, {
       id: detail.id,
@@ -346,13 +340,8 @@ const openVideoDialog = async (row?: VideoCard) => {
 const saveVideo = async () => {
   saving.value = true
   try {
-    if (isAdmin.value) {
-      await videoApi.saveVideo(videoForm)
-      ElMessage.success('课程已保存')
-    } else {
-      await videoApi.uploadVideo({ ...videoForm, status: 'DRAFT' })
-      ElMessage.success('课程已提交，等待管理员审核')
-    }
+    await videoApi.saveVideo(videoForm)
+    ElMessage.success('课程已保存')
     videoDialogVisible.value = false
     await loadVideos()
   } finally {
@@ -422,7 +411,7 @@ const videoStatusTag = (status: string) => {
 }
 
 onMounted(async () => {
-  if (!loggedIn.value) {
+  if (!loggedIn.value || !isAdmin.value) {
     return
   }
   await Promise.all([loadCategories(), loadRules()])
