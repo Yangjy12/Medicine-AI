@@ -1,0 +1,48 @@
+server:
+  port: ${SERVER_PORT:8085}
+
+spring:
+  application:
+    name: xinglin-forum-service
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:xinglin_video}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_PASSWORD:root}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.MySQL8Dialect
+  redis:
+    host: ${REDIS_HOST:localhost}
+    port: ${REDIS_PORT:6379}
+    password: ${REDIS_PASSWORD:}
+    timeout: 2s
+  rabbitmq:
+    host: ${RABBITMQ_HOST:localhost}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:xinglin}
+    password: ${RABBITMQ_PASSWORD:xinglin}
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{traceId:-},%X{userId:-}] %logger{36} - %msg%n"
+  level:
+    com.xinglin.forum: INFO
+    org.hibernate.SQL: WARN
+
+xinglin:
+  auth:
+    jwt-secret: ${JWT_SECRET:change_this_dev_secret_at_least_32_chars}
+  forum:
+    page-size-max: ${FORUM_PAGE_SIZE_MAX:50}
+    view-dedup-minutes: ${FORUM_VIEW_DEDUP_MINUTES:30}
+    view-flush-fixed-delay-ms: ${FORUM_VIEW_FLUSH_FIXED_DELAY_MS:10000}
+    post-title-min: ${FORUM_POST_TITLE_MIN:5}
+    post-title-max: ${FORUM_POST_TITLE_MAX:128}
+    post-content-max: ${FORUM_POST_CONTENT_MAX:20000}
+    comment-content-max: ${FORUM_COMMENT_MAX:2000}

@@ -22,6 +22,10 @@
           <Star :size="18" />
           <span>我的收藏</span>
         </RouterLink>
+        <RouterLink to="/forum" class="nav-item">
+          <MessagesSquare :size="18" />
+          <span>杏林论坛</span>
+        </RouterLink>
         <RouterLink v-if="loggedIn && !isAdmin" to="/uploads" class="nav-item">
           <UploadCloud :size="18" />
           <span>我的上传</span>
@@ -53,7 +57,7 @@
 </template>
 
 <script setup lang="ts">
-import { BookOpen, Clock3, LogOut, Settings, Star, UploadCloud } from 'lucide-vue-next'
+import { BookOpen, Clock3, LogOut, MessagesSquare, Settings, Star, UploadCloud } from 'lucide-vue-next'
 import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 import { userApi } from './api/user'

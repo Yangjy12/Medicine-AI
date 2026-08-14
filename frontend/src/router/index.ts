@@ -6,6 +6,9 @@ import FavoriteVideos from '../pages/video/FavoriteVideos.vue'
 import LoginPage from '../pages/LoginPage.vue'
 import AdminCenter from '../pages/AdminCenter.vue'
 import MyUploads from '../pages/MyUploads.vue'
+import ForumHome from '../pages/forum/ForumHome.vue'
+import ForumDetail from '../pages/forum/ForumDetail.vue'
+import ForumEditor from '../pages/forum/ForumEditor.vue'
 
 const router = createRouter({
   history: createWebHistory(),
@@ -16,6 +19,9 @@ const router = createRouter({
     { path: '/videos/:id', component: VideoDetail },
     { path: '/learning-history', component: LearningHistory },
     { path: '/favorites', component: FavoriteVideos },
+    { path: '/forum', component: ForumHome },
+    { path: '/forum/posts/:id', component: ForumDetail },
+    { path: '/forum/editor', component: ForumEditor },
     { path: '/uploads', component: MyUploads },
     { path: '/admin', component: AdminCenter }
   ],
