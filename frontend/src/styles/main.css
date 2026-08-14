@@ -171,7 +171,8 @@ button {
 }
 
 .forum-page,
-.forum-detail-page {
+.forum-detail-page,
+.workspace-page {
   max-width: 1440px;
   margin: 0 auto;
 }
@@ -728,6 +729,126 @@ button {
   gap: 10px;
 }
 
+.assistant-layout,
+.circle-layout {
+  display: grid;
+  grid-template-columns: 290px minmax(0, 1fr);
+  gap: 18px;
+  align-items: stretch;
+}
+
+.assistant-sidebar,
+.conversation-list {
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+
+.assistant-sidebar button,
+.conversation-list button {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+  padding: 12px;
+  text-align: left;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.conversation-list button.active {
+  border-color: rgba(31, 122, 87, 0.4);
+  background: var(--surface-soft);
+}
+
+.avatar.small {
+  width: 32px;
+  height: 32px;
+  font-size: 14px;
+}
+
+.conversation-list strong,
+.conversation-list span {
+  display: block;
+}
+
+.conversation-list span,
+.chat-head span {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.assistant-panel,
+.chat-panel {
+  min-height: 560px;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 14px;
+}
+
+.assistant-thread,
+.chat-thread {
+  overflow: auto;
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+
+.assistant-message {
+  max-width: 76%;
+  border-radius: 8px;
+  padding: 12px 14px;
+  line-height: 1.7;
+}
+
+.assistant-message p {
+  margin: 6px 0 0;
+}
+
+.assistant-message.assistant,
+.chat-bubble.peer {
+  justify-self: start;
+  background: var(--surface-soft);
+}
+
+.assistant-message.user,
+.chat-bubble.self {
+  justify-self: end;
+  background: var(--jade);
+  color: white;
+}
+
+.assistant-composer,
+.chat-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.chat-head {
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 12px;
+}
+
+.chat-head strong,
+.chat-head span {
+  display: block;
+}
+
+.chat-panel {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
+.chat-bubble {
+  max-width: 70%;
+  border-radius: 8px;
+  padding: 12px 14px;
+  line-height: 1.7;
+}
+
 .detail-page {
   max-width: 1440px;
   margin: 0 auto;
@@ -1013,7 +1134,11 @@ button {
   }
 
   .forum-actions,
-  .post-row {
+  .post-row,
+  .assistant-layout,
+  .circle-layout,
+  .assistant-composer,
+  .chat-composer {
     grid-template-columns: 1fr;
   }
 

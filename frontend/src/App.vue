@@ -22,6 +22,14 @@
           <Star :size="18" />
           <span>我的收藏</span>
         </RouterLink>
+        <RouterLink to="/ai" class="nav-item">
+          <Bot :size="18" />
+          <span>AI助手</span>
+        </RouterLink>
+        <RouterLink to="/circle" class="nav-item">
+          <UsersRound :size="18" />
+          <span>医友圈</span>
+        </RouterLink>
         <RouterLink to="/forum" class="nav-item">
           <MessagesSquare :size="18" />
           <span>杏林论坛</span>
@@ -57,7 +65,7 @@
 </template>
 
 <script setup lang="ts">
-import { BookOpen, Clock3, LogOut, MessagesSquare, Settings, Star, UploadCloud } from 'lucide-vue-next'
+import { BookOpen, Bot, Clock3, LogOut, MessagesSquare, Settings, Star, UploadCloud, UsersRound } from 'lucide-vue-next'
 import { storeToRefs } from 'pinia'
 import { useRouter } from 'vue-router'
 import { userApi } from './api/user'
