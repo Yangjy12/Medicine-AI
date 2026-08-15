@@ -6,6 +6,10 @@ public class ConversationVO {
     private Long id;
     private String conversationType;
     private String title;
+    private String avatar;
+    private Long targetUserId;
+    private String targetUserName;
+    private String targetUserAvatar;
     private String lastMessagePreview;
     private LocalDateTime lastMessageTime;
     private Long lastReadSeq;
@@ -19,6 +23,14 @@ public class ConversationVO {
     public void setConversationType(String conversationType) { this.conversationType = conversationType; }
     public String getTitle() { return title; }
     public void setTitle(String title) { this.title = title; }
+    public String getAvatar() { return avatar; }
+    public void setAvatar(String avatar) { this.avatar = avatar; }
+    public Long getTargetUserId() { return targetUserId; }
+    public void setTargetUserId(Long targetUserId) { this.targetUserId = targetUserId; }
+    public String getTargetUserName() { return targetUserName; }
+    public void setTargetUserName(String targetUserName) { this.targetUserName = targetUserName; }
+    public String getTargetUserAvatar() { return targetUserAvatar; }
+    public void setTargetUserAvatar(String targetUserAvatar) { this.targetUserAvatar = targetUserAvatar; }
     public String getLastMessagePreview() { return lastMessagePreview; }
     public void setLastMessagePreview(String lastMessagePreview) { this.lastMessagePreview = lastMessagePreview; }
     public LocalDateTime getLastMessageTime() { return lastMessageTime; }

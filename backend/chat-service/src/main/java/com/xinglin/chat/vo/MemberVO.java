@@ -4,6 +4,8 @@ import java.time.LocalDateTime;
 
 public class MemberVO {
     private Long userId;
+    private String nickname;
+    private String avatar;
     private String memberRole;
     private Long lastReadSeq;
     private String status;
@@ -12,6 +14,10 @@ public class MemberVO {
 
     public Long getUserId() { return userId; }
     public void setUserId(Long userId) { this.userId = userId; }
+    public String getNickname() { return nickname; }
+    public void setNickname(String nickname) { this.nickname = nickname; }
+    public String getAvatar() { return avatar; }
+    public void setAvatar(String avatar) { this.avatar = avatar; }
     public String getMemberRole() { return memberRole; }
     public void setMemberRole(String memberRole) { this.memberRole = memberRole; }
     public Long getLastReadSeq() { return lastReadSeq; }

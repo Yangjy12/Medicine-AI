@@ -8,6 +8,7 @@ public class PostCardVO {
     private String boardName;
     private Long userId;
     private String authorName;
+    private String authorAvatar;
     private String title;
     private String summary;
     private String coverUrl;
@@ -31,6 +32,8 @@ public class PostCardVO {
     public void setUserId(Long userId) { this.userId = userId; }
     public String getAuthorName() { return authorName; }
     public void setAuthorName(String authorName) { this.authorName = authorName; }
+    public String getAuthorAvatar() { return authorAvatar; }
+    public void setAuthorAvatar(String authorAvatar) { this.authorAvatar = authorAvatar; }
     public String getTitle() { return title; }
     public void setTitle(String title) { this.title = title; }
     public String getSummary() { return summary; }

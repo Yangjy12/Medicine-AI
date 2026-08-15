@@ -9,6 +9,7 @@ import com.xinglin.forum.entity.ForumComment;
 import com.xinglin.forum.entity.ForumFavorite;
 import com.xinglin.forum.entity.ForumLike;
 import com.xinglin.forum.entity.ForumPost;
+import com.xinglin.forum.entity.AppUserSummary;
 import com.xinglin.forum.repository.ForumBoardRepository;
 import com.xinglin.forum.repository.ForumCommentRepository;
 import com.xinglin.forum.repository.ForumFavoriteRepository;
@@ -35,6 +36,7 @@ import javax.persistence.criteria.Predicate;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -58,6 +60,7 @@ public class ForumService {
     private final ForumFavoriteRepository favoriteRepository;
     private final ForumBoardService boardService;
     private final StringRedisTemplate redisTemplate;
+    private final UserDirectoryService userDirectoryService;
 
     @Value("${xinglin.forum.page-size-max:50}")
     private int pageSizeMax;
@@ -70,7 +73,8 @@ public class ForumService {
                         ForumLikeRepository likeRepository,
                         ForumFavoriteRepository favoriteRepository,
                         ForumBoardService boardService,
-                        StringRedisTemplate redisTemplate) {
+                        StringRedisTemplate redisTemplate,
+                        UserDirectoryService userDirectoryService) {
         this.postRepository = postRepository;
         this.boardRepository = boardRepository;
         this.commentRepository = commentRepository;
@@ -78,6 +82,7 @@ public class ForumService {
         this.favoriteRepository = favoriteRepository;
         this.boardService = boardService;
         this.redisTemplate = redisTemplate;
+        this.userDirectoryService = userDirectoryService;
     }
 
     public PageResponse<PostCardVO> queryPosts(PostQueryRequest request, Long userId, boolean admin) {
@@ -85,8 +90,10 @@ public class ForumService {
         int pageSize = normalizePageSize(request.getPageSize());
         Pageable pageable = PageRequest.of(page - 1, pageSize, buildSort(request.getSort()));
         Page<ForumPost> result = postRepository.findAll(buildSpecification(request, admin), pageable);
-        List<PostCardVO> records = result.getContent().stream()
-                .map(this::toCard)
+        List<ForumPost> posts = result.getContent();
+        Map<Long, AppUserSummary> users = usersForPosts(posts);
+        List<PostCardVO> records = posts.stream()
+                .map(post -> toCard(post, users))
                 .collect(Collectors.toList());
         log.info("forum post query keyword={} boardId={} sort={} page={} pageSize={} userId={} admin={}",
                 request.getKeyword(), request.getBoardId(), request.getSort(), page, pageSize, userId, admin);
@@ -98,7 +105,9 @@ public class ForumService {
         int pageSize = normalizePageSize(request.getPageSize());
         Pageable pageable = PageRequest.of(page - 1, pageSize, Sort.by(Sort.Direction.DESC, "createdAt"));
         Page<ForumPost> result = postRepository.findByUserIdAndStatusNotOrderByCreatedAtDesc(userId, DELETED, pageable);
-        List<PostCardVO> records = result.getContent().stream().map(this::toCard).collect(Collectors.toList());
+        List<ForumPost> posts = result.getContent();
+        Map<Long, AppUserSummary> users = usersForPosts(posts);
+        List<PostCardVO> records = posts.stream().map(post -> toCard(post, users)).collect(Collectors.toList());
         return new PageResponse<>(records, page, pageSize, result.getTotalElements());
     }
 
@@ -106,26 +115,28 @@ public class ForumService {
         int page = normalizePage(request.getPage());
         int pageSize = normalizePageSize(request.getPageSize());
         Page<ForumFavorite> result = favoriteRepository.findByUserIdOrderByCreatedAtDesc(userId, PageRequest.of(page - 1, pageSize));
-        List<PostCardVO> records = result.getContent().stream()
+        List<ForumPost> posts = result.getContent().stream()
                 .map(favorite -> postRepository.findById(favorite.getPostId()).orElse(null))
                 .filter(Objects::nonNull)
                 .filter(post -> PUBLISHED.equals(post.getStatus()))
-                .map(this::toCard)
                 .collect(Collectors.toList());
+        Map<Long, AppUserSummary> users = usersForPosts(posts);
+        List<PostCardVO> records = posts.stream().map(post -> toCard(post, users)).collect(Collectors.toList());
         return new PageResponse<>(records, page, pageSize, result.getTotalElements());
     }
 
     public List<PostCardVO> hotPosts() {
-        return postRepository.findTop8ByStatusOrderByHotScoreDescPublishTimeDesc(PUBLISHED)
-                .stream()
-                .map(this::toCard)
+        List<ForumPost> posts = postRepository.findTop8ByStatusOrderByHotScoreDescPublishTimeDesc(PUBLISHED);
+        Map<Long, AppUserSummary> users = usersForPosts(posts);
+        return posts.stream()
+                .map(post -> toCard(post, users))
                 .collect(Collectors.toList());
     }
 
     public PostDetailVO detail(Long postId, Long userId, String identity) {
         ForumPost post = requireVisiblePost(postId);
         recordView(postId, userId, identity);
-        PostDetailVO vo = toDetail(post);
+        PostDetailVO vo = toDetail(post, userDirectoryService.findNormalUsers(java.util.Collections.singleton(post.getUserId())));
         if (userId != null) {
             vo.setLiked(likeRepository.existsByUserIdAndTargetTypeAndTargetId(userId, POST, postId));
             vo.setFavorited(favoriteRepository.existsByUserIdAndPostId(userId, postId));
@@ -144,7 +155,7 @@ public class ForumService {
         post.setPublishTime(LocalDateTime.now());
         ForumPost saved = postRepository.save(post);
         log.info("forum post created userId={} postId={} boardId={} status={}", userId, saved.getId(), saved.getBoardId(), saved.getStatus());
-        return toDetail(saved);
+        return toDetail(saved, userDirectoryService.findNormalUsers(java.util.Collections.singleton(saved.getUserId())));
     }
 
     @Transactional
@@ -160,7 +171,7 @@ public class ForumService {
         fillPost(post, request);
         ForumPost saved = postRepository.save(post);
         log.info("forum post updated userId={} postId={} admin={}", userId, postId, admin);
-        return toDetail(saved);
+        return toDetail(saved, userDirectoryService.findNormalUsers(java.util.Collections.singleton(saved.getUserId())));
     }
 
     @Transactional
@@ -189,7 +200,7 @@ public class ForumService {
         ForumPost saved = postRepository.save(post);
         log.info("admin forum post status updated adminId={} postId={} status={} topFlag={} essenceFlag={}",
                 adminId, postId, saved.getStatus(), saved.getTopFlag(), saved.getEssenceFlag());
-        return toDetail(saved);
+        return toDetail(saved, userDirectoryService.findNormalUsers(java.util.Collections.singleton(saved.getUserId())));
     }
 
     @Transactional
@@ -229,7 +240,9 @@ public class ForumService {
         int pageSize = normalizePageSize(pageSizeValue);
         Page<ForumComment> result = commentRepository.findByPostIdAndParentIdAndStatusOrderByCreatedAtDesc(
                 postId, 0L, NORMAL, PageRequest.of(page - 1, pageSize));
-        List<CommentVO> roots = result.getContent().stream().map(comment -> toComment(comment, userId)).collect(Collectors.toList());
+        List<ForumComment> comments = result.getContent();
+        Map<Long, AppUserSummary> users = usersForComments(comments);
+        List<CommentVO> roots = comments.stream().map(comment -> toComment(comment, userId, users)).collect(Collectors.toList());
         attachPreviewReplies(postId, roots, userId);
         return new PageResponse<>(roots, page, pageSize, result.getTotalElements());
     }
@@ -244,7 +257,9 @@ public class ForumService {
         int pageSize = normalizePageSize(pageSizeValue);
         Page<ForumComment> result = commentRepository.findByPostIdAndRootIdAndParentIdNotAndStatusOrderByCreatedAtAsc(
                 root.getPostId(), root.getRootId(), 0L, NORMAL, PageRequest.of(page - 1, pageSize));
-        List<CommentVO> records = result.getContent().stream().map(comment -> toComment(comment, userId)).collect(Collectors.toList());
+        List<ForumComment> comments = result.getContent();
+        Map<Long, AppUserSummary> users = usersForComments(comments);
+        List<CommentVO> records = comments.stream().map(comment -> toComment(comment, userId, users)).collect(Collectors.toList());
         return new PageResponse<>(records, page, pageSize, result.getTotalElements());
     }
 
@@ -458,23 +473,26 @@ public class ForumService {
         }
         List<Long> rootIds = roots.stream().map(CommentVO::getRootId).collect(Collectors.toList());
         List<ForumComment> replies = commentRepository.findByPostIdAndRootIdInAndParentIdNotAndStatusOrderByCreatedAtAsc(postId, rootIds, 0L, NORMAL);
+        Map<Long, AppUserSummary> users = usersForComments(replies);
         Map<Long, List<CommentVO>> grouped = new LinkedHashMap<>();
         for (ForumComment reply : replies) {
             List<CommentVO> values = grouped.computeIfAbsent(reply.getRootId(), ignored -> new ArrayList<>());
             if (values.size() < 3) {
-                values.add(toComment(reply, userId));
+                values.add(toComment(reply, userId, users));
             }
         }
         roots.forEach(root -> root.setReplies(grouped.getOrDefault(root.getRootId(), new ArrayList<>())));
     }
 
-    private PostCardVO toCard(ForumPost post) {
+    private PostCardVO toCard(ForumPost post, Map<Long, AppUserSummary> users) {
         PostCardVO vo = new PostCardVO();
+        AppUserSummary author = users.get(post.getUserId());
         vo.setId(post.getId());
         vo.setBoardId(post.getBoardId());
         vo.setBoardName(boardService.resolveBoardName(post.getBoardId()));
         vo.setUserId(post.getUserId());
-        vo.setAuthorName("用户 " + post.getUserId());
+        vo.setAuthorName(userDirectoryService.displayName(author, post.getUserId()));
+        vo.setAuthorAvatar(author == null ? null : author.getAvatar());
         vo.setTitle(post.getTitle());
         vo.setSummary(post.getSummary());
         vo.setCoverUrl(post.getCoverUrl());
@@ -490,14 +508,15 @@ public class ForumService {
         return vo;
     }
 
-    private PostDetailVO toDetail(ForumPost post) {
+    private PostDetailVO toDetail(ForumPost post, Map<Long, AppUserSummary> users) {
         PostDetailVO vo = new PostDetailVO();
-        PostCardVO card = toCard(post);
+        PostCardVO card = toCard(post, users);
         vo.setId(card.getId());
         vo.setBoardId(card.getBoardId());
         vo.setBoardName(card.getBoardName());
         vo.setUserId(card.getUserId());
         vo.setAuthorName(card.getAuthorName());
+        vo.setAuthorAvatar(card.getAuthorAvatar());
         vo.setTitle(card.getTitle());
         vo.setSummary(card.getSummary());
         vo.setCoverUrl(card.getCoverUrl());
@@ -515,14 +534,25 @@ public class ForumService {
     }
 
     private CommentVO toComment(ForumComment comment, Long userId) {
+        return toComment(comment, userId, usersForComments(java.util.Collections.singleton(comment)));
+    }
+
+    private CommentVO toComment(ForumComment comment, Long userId, Map<Long, AppUserSummary> users) {
         CommentVO vo = new CommentVO();
+        AppUserSummary author = users.get(comment.getUserId());
+        AppUserSummary replyTo = users.get(comment.getReplyToUserId());
         vo.setId(comment.getId());
         vo.setPostId(comment.getPostId());
         vo.setUserId(comment.getUserId());
-        vo.setAuthorName("用户 " + comment.getUserId());
+        vo.setAuthorName(userDirectoryService.displayName(author, comment.getUserId()));
+        vo.setAuthorAvatar(author == null ? null : author.getAvatar());
         vo.setParentId(comment.getParentId());
         vo.setRootId(comment.getRootId());
         vo.setReplyToUserId(comment.getReplyToUserId());
+        if (comment.getReplyToUserId() != null) {
+            vo.setReplyToUserName(userDirectoryService.displayName(replyTo, comment.getReplyToUserId()));
+            vo.setReplyToUserAvatar(replyTo == null ? null : replyTo.getAvatar());
+        }
         vo.setContent(comment.getContent());
         vo.setLikeCount(nonNull(comment.getLikeCount()));
         vo.setCreatedAt(comment.getCreatedAt());
@@ -530,6 +560,28 @@ public class ForumService {
             vo.setLiked(likeRepository.existsByUserIdAndTargetTypeAndTargetId(userId, COMMENT, comment.getId()));
         }
         return vo;
+    }
+
+    private Map<Long, AppUserSummary> usersForPosts(Collection<ForumPost> posts) {
+        if (posts == null || posts.isEmpty()) {
+            return java.util.Collections.emptyMap();
+        }
+        List<Long> userIds = posts.stream()
+                .map(ForumPost::getUserId)
+                .collect(Collectors.toList());
+        return userDirectoryService.findNormalUsers(userIds);
+    }
+
+    private Map<Long, AppUserSummary> usersForComments(Collection<ForumComment> comments) {
+        if (comments == null || comments.isEmpty()) {
+            return java.util.Collections.emptyMap();
+        }
+        List<Long> userIds = new ArrayList<>();
+        for (ForumComment comment : comments) {
+            userIds.add(comment.getUserId());
+            userIds.add(comment.getReplyToUserId());
+        }
+        return userDirectoryService.findNormalUsers(userIds);
     }
 
     private String cleanContent(String value) {

@@ -9,9 +9,12 @@ public class CommentVO {
     private Long postId;
     private Long userId;
     private String authorName;
+    private String authorAvatar;
     private Long parentId;
     private Long rootId;
     private Long replyToUserId;
+    private String replyToUserName;
+    private String replyToUserAvatar;
     private String content;
     private Long likeCount;
     private Boolean liked = false;
@@ -26,12 +29,18 @@ public class CommentVO {
     public void setUserId(Long userId) { this.userId = userId; }
     public String getAuthorName() { return authorName; }
     public void setAuthorName(String authorName) { this.authorName = authorName; }
+    public String getAuthorAvatar() { return authorAvatar; }
+    public void setAuthorAvatar(String authorAvatar) { this.authorAvatar = authorAvatar; }
     public Long getParentId() { return parentId; }
     public void setParentId(Long parentId) { this.parentId = parentId; }
     public Long getRootId() { return rootId; }
     public void setRootId(Long rootId) { this.rootId = rootId; }
     public Long getReplyToUserId() { return replyToUserId; }
     public void setReplyToUserId(Long replyToUserId) { this.replyToUserId = replyToUserId; }
+    public String getReplyToUserName() { return replyToUserName; }
+    public void setReplyToUserName(String replyToUserName) { this.replyToUserName = replyToUserName; }
+    public String getReplyToUserAvatar() { return replyToUserAvatar; }
+    public void setReplyToUserAvatar(String replyToUserAvatar) { this.replyToUserAvatar = replyToUserAvatar; }
     public String getContent() { return content; }
     public void setContent(String content) { this.content = content; }
     public Long getLikeCount() { return likeCount; }

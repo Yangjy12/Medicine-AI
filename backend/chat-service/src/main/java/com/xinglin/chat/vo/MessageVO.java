@@ -7,6 +7,8 @@ public class MessageVO {
     private Long conversationId;
     private Long seq;
     private Long senderId;
+    private String senderName;
+    private String senderAvatar;
     private String clientMsgId;
     private String contentType;
     private String content;
@@ -23,6 +25,10 @@ public class MessageVO {
     public void setSeq(Long seq) { this.seq = seq; }
     public Long getSenderId() { return senderId; }
     public void setSenderId(Long senderId) { this.senderId = senderId; }
+    public String getSenderName() { return senderName; }
+    public void setSenderName(String senderName) { this.senderName = senderName; }
+    public String getSenderAvatar() { return senderAvatar; }
+    public void setSenderAvatar(String senderAvatar) { this.senderAvatar = senderAvatar; }
     public String getClientMsgId() { return clientMsgId; }
     public void setClientMsgId(String clientMsgId) { this.clientMsgId = clientMsgId; }
     public String getContentType() { return contentType; }

@@ -11,6 +11,7 @@ import com.xinglin.chat.dto.ReadConversationRequest;
 import com.xinglin.chat.dto.SendMessageRequest;
 import com.xinglin.chat.dto.TransferOwnerRequest;
 import com.xinglin.chat.dto.UpdateGroupRequest;
+import com.xinglin.chat.entity.AppUserSummary;
 import com.xinglin.chat.entity.ChatConversation;
 import com.xinglin.chat.entity.ChatConversationMember;
 import com.xinglin.chat.entity.ChatMessage;
@@ -37,6 +38,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -60,6 +62,7 @@ public class ChatService {
     private final ChatMessageRepository messageRepository;
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
+    private final UserDirectoryService userDirectoryService;
 
     @Value("${xinglin.chat.page-size-max:50}")
     private int pageSizeMax;
@@ -72,12 +75,14 @@ public class ChatService {
                        ChatConversationMemberRepository memberRepository,
                        ChatMessageRepository messageRepository,
                        StringRedisTemplate redisTemplate,
-                       ObjectMapper objectMapper) {
+                       ObjectMapper objectMapper,
+                       UserDirectoryService userDirectoryService) {
         this.conversationRepository = conversationRepository;
         this.memberRepository = memberRepository;
         this.messageRepository = messageRepository;
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;
+        this.userDirectoryService = userDirectoryService;
     }
 
     public PageResponse<ConversationVO> listConversations(Long userId, Integer pageValue, Integer pageSizeValue) {
@@ -105,6 +110,7 @@ public class ChatService {
         if (userId.equals(targetUserId)) {
             throw new BusinessException(400, "不能和自己创建会话");
         }
+        userDirectoryService.requireNormalUser(targetUserId);
         Long minUserId = Math.min(userId, targetUserId);
         Long maxUserId = Math.max(userId, targetUserId);
         ChatConversation conversation = conversationRepository
@@ -126,6 +132,7 @@ public class ChatService {
         addMember(saved.getId(), userId, OWNER);
         Set<Long> members = new LinkedHashSet<>(request.getMemberIds() == null ? Collections.emptyList() : request.getMemberIds());
         members.remove(userId);
+        userDirectoryService.requireNormalUsers(members);
         for (Long memberId : members) {
             if (memberId != null && memberId > 0) {
                 addMember(saved.getId(), memberId, MEMBER);
@@ -160,6 +167,7 @@ public class ChatService {
         requireOwner(conversationId, userId);
         Set<Long> memberIds = new LinkedHashSet<>(request.getMemberIds() == null ? Collections.emptyList() : request.getMemberIds());
         memberIds.remove(userId);
+        userDirectoryService.requireNormalUsers(memberIds);
         for (Long memberId : memberIds) {
             if (memberId != null && memberId > 0) {
                 addMember(conversationId, memberId, MEMBER);
@@ -430,6 +438,7 @@ public class ChatService {
         vo.setId(conversation.getId());
         vo.setConversationType(conversation.getConversationType());
         vo.setTitle(resolveTitle(conversation, currentUserId));
+        fillConversationAvatar(vo, conversation, currentUserId);
         vo.setLastMessagePreview(conversation.getLastMessagePreview());
         vo.setLastMessageTime(conversation.getLastMessageTime());
         vo.setLastReadSeq(nonNull(member.getLastReadSeq()));
@@ -442,6 +451,9 @@ public class ChatService {
     private MemberVO toMember(ChatConversationMember member) {
         MemberVO vo = new MemberVO();
         vo.setUserId(member.getUserId());
+        AppUserSummary user = userDirectoryService.findNormalUsers(Collections.singleton(member.getUserId())).get(member.getUserId());
+        vo.setNickname(userDirectoryService.displayName(user));
+        vo.setAvatar(user == null ? null : user.getAvatar());
         vo.setMemberRole(member.getMemberRole());
         vo.setLastReadSeq(nonNull(member.getLastReadSeq()));
         vo.setStatus(member.getStatus());
@@ -456,6 +468,9 @@ public class ChatService {
         vo.setConversationId(message.getConversationId());
         vo.setSeq(message.getSeq());
         vo.setSenderId(message.getSenderId());
+        AppUserSummary sender = userDirectoryService.findNormalUsers(Collections.singleton(message.getSenderId())).get(message.getSenderId());
+        vo.setSenderName(userDirectoryService.displayName(sender));
+        vo.setSenderAvatar(sender == null ? null : sender.getAvatar());
         vo.setClientMsgId(message.getClientMsgId());
         vo.setContentType(message.getContentType());
         vo.setContent(message.getContent());
@@ -471,7 +486,24 @@ public class ChatService {
             return conversation.getTitle();
         }
         Long targetId = Objects.equals(currentUserId, conversation.getMinUserId()) ? conversation.getMaxUserId() : conversation.getMinUserId();
-        return targetId == null ? "私聊" : "用户 " + targetId;
+        return targetId == null ? "私聊" : userDirectoryService.displayName(targetId);
+    }
+
+    private void fillConversationAvatar(ConversationVO vo, ChatConversation conversation, Long currentUserId) {
+        if (GROUP.equals(conversation.getConversationType())) {
+            vo.setAvatar(conversation.getAvatar());
+            return;
+        }
+        Long targetId = Objects.equals(currentUserId, conversation.getMinUserId()) ? conversation.getMaxUserId() : conversation.getMinUserId();
+        if (targetId == null) {
+            return;
+        }
+        Map<Long, AppUserSummary> users = userDirectoryService.findNormalUsers(Collections.singleton(targetId));
+        AppUserSummary target = users.get(targetId);
+        vo.setTargetUserId(targetId);
+        vo.setTargetUserName(userDirectoryService.displayName(target));
+        vo.setTargetUserAvatar(target == null ? null : target.getAvatar());
+        vo.setAvatar(vo.getTargetUserAvatar());
     }
 
     private String normalizeContentType(String value) {
