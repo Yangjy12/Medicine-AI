@@ -7,6 +7,6 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface ForumFavoriteRepository extends JpaRepository<ForumFavorite, Long> {
     boolean existsByUserIdAndPostId(Long userId, Long postId);
-    void deleteByUserIdAndPostId(Long userId, Long postId);
+    long deleteByUserIdAndPostId(Long userId, Long postId);
     Page<ForumFavorite> findByUserIdOrderByCreatedAtDesc(Long userId, Pageable pageable);
 }

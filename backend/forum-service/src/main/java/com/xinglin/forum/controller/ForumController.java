@@ -160,6 +160,14 @@ public class ForumController {
         return ApiResponse.success(null);
     }
 
+    @DeleteMapping("/comments/{commentId}")
+    public ApiResponse<Void> deleteComment(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                           @PathVariable Long commentId) {
+        AuthenticatedUser user = authService.requireLogin(authorization);
+        forumService.deleteComment(commentId, user.getUserId(), user.hasRole("ADMIN"));
+        return ApiResponse.success(null);
+    }
+
     @DeleteMapping("/comments/{commentId}/like")
     public ApiResponse<Void> unlikeComment(@RequestHeader(value = "Authorization", required = false) String authorization,
                                            @PathVariable Long commentId) {

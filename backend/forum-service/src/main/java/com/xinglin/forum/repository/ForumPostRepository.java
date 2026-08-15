@@ -23,14 +23,17 @@ public interface ForumPostRepository extends JpaRepository<ForumPost, Long>, Jpa
     int increaseViewCount(Long postId, Long delta);
 
     @Modifying
-    @Query("update ForumPost p set p.commentCount = p.commentCount + :delta, p.hotScore = p.hotScore + (:delta * 5) where p.id = :postId")
+    @Query("update ForumPost p set p.commentCount = case when p.commentCount + :delta < 0 then 0 else p.commentCount + :delta end, " +
+            "p.hotScore = case when p.hotScore + (:delta * 5) < 0 then 0 else p.hotScore + (:delta * 5) end where p.id = :postId")
     int increaseCommentCount(Long postId, Long delta);
 
     @Modifying
-    @Query("update ForumPost p set p.likeCount = p.likeCount + :delta, p.hotScore = p.hotScore + (:delta * 3) where p.id = :postId")
+    @Query("update ForumPost p set p.likeCount = case when p.likeCount + :delta < 0 then 0 else p.likeCount + :delta end, " +
+            "p.hotScore = case when p.hotScore + (:delta * 3) < 0 then 0 else p.hotScore + (:delta * 3) end where p.id = :postId")
     int increaseLikeCount(Long postId, Long delta);
 
     @Modifying
-    @Query("update ForumPost p set p.favoriteCount = p.favoriteCount + :delta, p.hotScore = p.hotScore + (:delta * 4) where p.id = :postId")
+    @Query("update ForumPost p set p.favoriteCount = case when p.favoriteCount + :delta < 0 then 0 else p.favoriteCount + :delta end, " +
+            "p.hotScore = case when p.hotScore + (:delta * 4) < 0 then 0 else p.hotScore + (:delta * 4) end where p.id = :postId")
     int increaseFavoriteCount(Long postId, Long delta);
 }

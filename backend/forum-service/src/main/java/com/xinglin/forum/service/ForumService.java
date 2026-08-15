@@ -237,12 +237,41 @@ public class ForumService {
     public PageResponse<CommentVO> replies(Long rootCommentId, Integer pageValue, Integer pageSizeValue, Long userId) {
         ForumComment root = commentRepository.findById(rootCommentId)
                 .orElseThrow(() -> new BusinessException(404, "评论不存在"));
+        if (!NORMAL.equals(root.getStatus())) {
+            throw new BusinessException(404, "评论不存在");
+        }
         int page = normalizePage(pageValue);
         int pageSize = normalizePageSize(pageSizeValue);
         Page<ForumComment> result = commentRepository.findByPostIdAndRootIdAndParentIdNotAndStatusOrderByCreatedAtAsc(
                 root.getPostId(), root.getRootId(), 0L, NORMAL, PageRequest.of(page - 1, pageSize));
         List<CommentVO> records = result.getContent().stream().map(comment -> toComment(comment, userId)).collect(Collectors.toList());
         return new PageResponse<>(records, page, pageSize, result.getTotalElements());
+    }
+
+    @Transactional
+    public void deleteComment(Long commentId, Long userId, boolean admin) {
+        ForumComment comment = commentRepository.findById(commentId)
+                .orElseThrow(() -> new BusinessException(404, "评论不存在"));
+        if (!NORMAL.equals(comment.getStatus())) {
+            return;
+        }
+        if (!admin && !userId.equals(comment.getUserId())) {
+            throw new BusinessException(403, "只能删除自己的评论");
+        }
+        List<ForumComment> deleting = isRootComment(comment)
+                ? commentRepository.findByPostIdAndRootIdAndStatus(comment.getPostId(), comment.getRootId(), NORMAL)
+                : new ArrayList<>();
+        if (!isRootComment(comment)) {
+            deleting.add(comment);
+        }
+        for (ForumComment item : deleting) {
+            item.setStatus(DELETED);
+        }
+        commentRepository.saveAll(deleting);
+        if (!deleting.isEmpty()) {
+            postRepository.increaseCommentCount(comment.getPostId(), -(long) deleting.size());
+        }
+        log.info("forum comment deleted userId={} commentId={} admin={} affected={}", userId, commentId, admin, deleting.size());
     }
 
     @Transactional
@@ -262,8 +291,8 @@ public class ForumService {
 
     @Transactional
     public void unlikePost(Long postId, Long userId) {
-        if (likeRepository.existsByUserIdAndTargetTypeAndTargetId(userId, POST, postId)) {
-            likeRepository.deleteByUserIdAndTargetTypeAndTargetId(userId, POST, postId);
+        long deleted = likeRepository.deleteByUserIdAndTargetTypeAndTargetId(userId, POST, postId);
+        if (deleted > 0) {
             postRepository.increaseLikeCount(postId, -1L);
             log.info("forum post unlike success userId={} postId={}", userId, postId);
         }
@@ -286,8 +315,8 @@ public class ForumService {
 
     @Transactional
     public void unfavoritePost(Long postId, Long userId) {
-        if (favoriteRepository.existsByUserIdAndPostId(userId, postId)) {
-            favoriteRepository.deleteByUserIdAndPostId(userId, postId);
+        long deleted = favoriteRepository.deleteByUserIdAndPostId(userId, postId);
+        if (deleted > 0) {
             postRepository.increaseFavoriteCount(postId, -1L);
             log.info("forum post unfavorite success userId={} postId={}", userId, postId);
         }
@@ -296,6 +325,9 @@ public class ForumService {
     @Transactional
     public void likeComment(Long commentId, Long userId) {
         ForumComment comment = commentRepository.findById(commentId).orElseThrow(() -> new BusinessException(404, "评论不存在"));
+        if (!NORMAL.equals(comment.getStatus())) {
+            throw new BusinessException(404, "评论不存在");
+        }
         if (!likeRepository.existsByUserIdAndTargetTypeAndTargetId(userId, COMMENT, commentId)) {
             try {
                 likeRepository.save(new ForumLike(userId, COMMENT, commentId));
@@ -309,8 +341,8 @@ public class ForumService {
 
     @Transactional
     public void unlikeComment(Long commentId, Long userId) {
-        if (likeRepository.existsByUserIdAndTargetTypeAndTargetId(userId, COMMENT, commentId)) {
-            likeRepository.deleteByUserIdAndTargetTypeAndTargetId(userId, COMMENT, commentId);
+        long deleted = likeRepository.deleteByUserIdAndTargetTypeAndTargetId(userId, COMMENT, commentId);
+        if (deleted > 0) {
             commentRepository.increaseLikeCount(commentId, -1L);
             log.info("forum comment unlike success userId={} commentId={}", userId, commentId);
         }
@@ -545,6 +577,10 @@ public class ForumService {
         } catch (Exception ex) {
             return null;
         }
+    }
+
+    private boolean isRootComment(ForumComment comment) {
+        return comment.getParentId() == null || comment.getParentId() <= 0 || Objects.equals(comment.getId(), comment.getRootId());
     }
 
     private int normalizePage(Integer page) {
