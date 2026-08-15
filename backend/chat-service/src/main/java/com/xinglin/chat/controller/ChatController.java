@@ -2,17 +2,23 @@ package com.xinglin.chat.controller;
 
 import com.xinglin.chat.common.ApiResponse;
 import com.xinglin.chat.common.PageResponse;
+import com.xinglin.chat.dto.AddMembersRequest;
 import com.xinglin.chat.dto.CreateGroupConversationRequest;
 import com.xinglin.chat.dto.CreatePrivateConversationRequest;
 import com.xinglin.chat.dto.ReadConversationRequest;
 import com.xinglin.chat.dto.SendMessageRequest;
+import com.xinglin.chat.dto.TransferOwnerRequest;
+import com.xinglin.chat.dto.UpdateGroupRequest;
 import com.xinglin.chat.security.AuthenticatedUser;
 import com.xinglin.chat.security.ChatAuthService;
 import com.xinglin.chat.service.ChatService;
 import com.xinglin.chat.vo.ConversationVO;
+import com.xinglin.chat.vo.MemberVO;
 import com.xinglin.chat.vo.MessageVO;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/chat")
@@ -45,6 +51,55 @@ public class ChatController {
                                                    @Validated @RequestBody CreateGroupConversationRequest request) {
         AuthenticatedUser user = authService.requireLogin(authorization);
         return ApiResponse.success(chatService.createGroupConversation(user.getUserId(), request));
+    }
+
+    @PutMapping("/conversations/{conversationId}")
+    public ApiResponse<ConversationVO> updateGroup(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                                   @PathVariable Long conversationId,
+                                                   @Validated @RequestBody UpdateGroupRequest request) {
+        AuthenticatedUser user = authService.requireLogin(authorization);
+        return ApiResponse.success(chatService.updateGroup(user.getUserId(), conversationId, request));
+    }
+
+    @GetMapping("/conversations/{conversationId}/members")
+    public ApiResponse<List<MemberVO>> members(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                               @PathVariable Long conversationId) {
+        AuthenticatedUser user = authService.requireLogin(authorization);
+        return ApiResponse.success(chatService.listMembers(user.getUserId(), conversationId));
+    }
+
+    @PostMapping("/conversations/{conversationId}/members")
+    public ApiResponse<List<MemberVO>> addMembers(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                                  @PathVariable Long conversationId,
+                                                  @Validated @RequestBody AddMembersRequest request) {
+        AuthenticatedUser user = authService.requireLogin(authorization);
+        return ApiResponse.success(chatService.addMembers(user.getUserId(), conversationId, request));
+    }
+
+    @DeleteMapping("/conversations/{conversationId}/members/{memberId}")
+    public ApiResponse<Void> removeMember(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                          @PathVariable Long conversationId,
+                                          @PathVariable Long memberId) {
+        AuthenticatedUser user = authService.requireLogin(authorization);
+        chatService.removeMember(user.getUserId(), conversationId, memberId);
+        return ApiResponse.success(null);
+    }
+
+    @PostMapping("/conversations/{conversationId}/owner")
+    public ApiResponse<Void> transferOwner(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                           @PathVariable Long conversationId,
+                                           @Validated @RequestBody TransferOwnerRequest request) {
+        AuthenticatedUser user = authService.requireLogin(authorization);
+        chatService.transferOwner(user.getUserId(), conversationId, request);
+        return ApiResponse.success(null);
+    }
+
+    @PostMapping("/conversations/{conversationId}/leave")
+    public ApiResponse<Void> leaveConversation(@RequestHeader(value = "Authorization", required = false) String authorization,
+                                               @PathVariable Long conversationId) {
+        AuthenticatedUser user = authService.requireLogin(authorization);
+        chatService.leaveConversation(user.getUserId(), conversationId);
+        return ApiResponse.success(null);
     }
 
     @GetMapping("/conversations/{conversationId}/messages")

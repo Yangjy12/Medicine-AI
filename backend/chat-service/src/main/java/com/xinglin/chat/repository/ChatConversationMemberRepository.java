@@ -15,4 +15,5 @@ public interface ChatConversationMemberRepository extends JpaRepository<ChatConv
     Page<ChatConversationMember> findByUserIdAndStatusOrderByJoinedAtDesc(Long userId, String status, Pageable pageable);
     List<ChatConversationMember> findByConversationIdAndStatus(Long conversationId, String status);
     List<ChatConversationMember> findByConversationIdInAndUserIdAndStatus(Collection<Long> conversationIds, Long userId, String status);
+    long countByConversationIdAndStatus(Long conversationId, String status);
 }

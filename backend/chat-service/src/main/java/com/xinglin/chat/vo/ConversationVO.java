@@ -10,6 +10,8 @@ public class ConversationVO {
     private LocalDateTime lastMessageTime;
     private Long lastReadSeq;
     private Long unreadCount;
+    private String currentUserRole;
+    private Long memberCount;
 
     public Long getId() { return id; }
     public void setId(Long id) { this.id = id; }
@@ -25,4 +27,8 @@ public class ConversationVO {
     public void setLastReadSeq(Long lastReadSeq) { this.lastReadSeq = lastReadSeq; }
     public Long getUnreadCount() { return unreadCount; }
     public void setUnreadCount(Long unreadCount) { this.unreadCount = unreadCount; }
+    public String getCurrentUserRole() { return currentUserRole; }
+    public void setCurrentUserRole(String currentUserRole) { this.currentUserRole = currentUserRole; }
+    public Long getMemberCount() { return memberCount; }
+    public void setMemberCount(Long memberCount) { this.memberCount = memberCount; }
 }

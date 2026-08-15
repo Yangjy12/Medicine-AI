@@ -4,10 +4,13 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xinglin.chat.common.BusinessException;
 import com.xinglin.chat.common.PageResponse;
+import com.xinglin.chat.dto.AddMembersRequest;
 import com.xinglin.chat.dto.CreateGroupConversationRequest;
 import com.xinglin.chat.dto.CreatePrivateConversationRequest;
 import com.xinglin.chat.dto.ReadConversationRequest;
 import com.xinglin.chat.dto.SendMessageRequest;
+import com.xinglin.chat.dto.TransferOwnerRequest;
+import com.xinglin.chat.dto.UpdateGroupRequest;
 import com.xinglin.chat.entity.ChatConversation;
 import com.xinglin.chat.entity.ChatConversationMember;
 import com.xinglin.chat.entity.ChatMessage;
@@ -15,6 +18,7 @@ import com.xinglin.chat.repository.ChatConversationMemberRepository;
 import com.xinglin.chat.repository.ChatConversationRepository;
 import com.xinglin.chat.repository.ChatMessageRepository;
 import com.xinglin.chat.vo.ConversationVO;
+import com.xinglin.chat.vo.MemberVO;
 import com.xinglin.chat.vo.MessageVO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -44,6 +48,10 @@ public class ChatService {
     private static final String PRIVATE = "PRIVATE";
     private static final String GROUP = "GROUP";
     private static final String ACTIVE = "ACTIVE";
+    private static final String LEFT = "LEFT";
+    private static final String INACTIVE = "INACTIVE";
+    private static final String OWNER = "OWNER";
+    private static final String MEMBER = "MEMBER";
     private static final String NORMAL = "NORMAL";
     private static final String RECALLED = "RECALLED";
 
@@ -115,17 +123,100 @@ public class ChatService {
         conversation.setStatus(ACTIVE);
         ChatConversation saved = conversationRepository.save(conversation);
 
-        addMember(saved.getId(), userId, "OWNER");
+        addMember(saved.getId(), userId, OWNER);
         Set<Long> members = new LinkedHashSet<>(request.getMemberIds() == null ? Collections.emptyList() : request.getMemberIds());
         members.remove(userId);
         for (Long memberId : members) {
             if (memberId != null && memberId > 0) {
-                addMember(saved.getId(), memberId, "MEMBER");
+                addMember(saved.getId(), memberId, MEMBER);
             }
         }
         ChatConversationMember owner = requireMember(saved.getId(), userId);
         log.info("chat group created ownerId={} conversationId={} memberCount={}", userId, saved.getId(), members.size() + 1);
         return toConversation(saved, owner, userId);
+    }
+
+    public List<MemberVO> listMembers(Long userId, Long conversationId) {
+        requireMember(conversationId, userId);
+        return memberRepository.findByConversationIdAndStatus(conversationId, ACTIVE)
+                .stream()
+                .map(this::toMember)
+                .collect(Collectors.toList());
+    }
+
+    @Transactional
+    public ConversationVO updateGroup(Long userId, Long conversationId, UpdateGroupRequest request) {
+        ChatConversation conversation = requireGroupConversation(conversationId);
+        ChatConversationMember operator = requireOwner(conversationId, userId);
+        conversation.setTitle(cleanText(request.getTitle(), 64));
+        ChatConversation saved = conversationRepository.save(conversation);
+        log.info("chat group updated userId={} conversationId={} title={}", userId, conversationId, saved.getTitle());
+        return toConversation(saved, operator, userId);
+    }
+
+    @Transactional
+    public List<MemberVO> addMembers(Long userId, Long conversationId, AddMembersRequest request) {
+        requireGroupConversation(conversationId);
+        requireOwner(conversationId, userId);
+        Set<Long> memberIds = new LinkedHashSet<>(request.getMemberIds() == null ? Collections.emptyList() : request.getMemberIds());
+        memberIds.remove(userId);
+        for (Long memberId : memberIds) {
+            if (memberId != null && memberId > 0) {
+                addMember(conversationId, memberId, MEMBER);
+            }
+        }
+        log.info("chat group members added operatorId={} conversationId={} addCount={}", userId, conversationId, memberIds.size());
+        return listMembers(userId, conversationId);
+    }
+
+    @Transactional
+    public void removeMember(Long userId, Long conversationId, Long targetUserId) {
+        requireGroupConversation(conversationId);
+        requireOwner(conversationId, userId);
+        if (userId.equals(targetUserId)) {
+            throw new BusinessException(400, "群主不能直接移除自己，请先转让群主或解散会话");
+        }
+        ChatConversationMember target = requireMember(conversationId, targetUserId);
+        if (OWNER.equals(target.getMemberRole())) {
+            throw new BusinessException(400, "不能移除群主");
+        }
+        leaveMember(target);
+        log.info("chat group member removed operatorId={} conversationId={} targetUserId={}", userId, conversationId, targetUserId);
+    }
+
+    @Transactional
+    public void transferOwner(Long userId, Long conversationId, TransferOwnerRequest request) {
+        requireGroupConversation(conversationId);
+        ChatConversationMember currentOwner = requireOwner(conversationId, userId);
+        ChatConversationMember target = requireMember(conversationId, request.getTargetUserId());
+        if (userId.equals(target.getUserId())) {
+            return;
+        }
+        currentOwner.setMemberRole(MEMBER);
+        target.setMemberRole(OWNER);
+        memberRepository.save(currentOwner);
+        memberRepository.save(target);
+        log.info("chat group owner transferred conversationId={} fromUserId={} toUserId={}",
+                conversationId, userId, target.getUserId());
+    }
+
+    @Transactional
+    public void leaveConversation(Long userId, Long conversationId) {
+        ChatConversation conversation = conversationRepository.findById(conversationId)
+                .orElseThrow(() -> new BusinessException(404, "会话不存在"));
+        ChatConversationMember member = requireMember(conversationId, userId);
+        if (GROUP.equals(conversation.getConversationType()) && OWNER.equals(member.getMemberRole())) {
+            long activeCount = memberRepository.countByConversationIdAndStatus(conversationId, ACTIVE);
+            if (activeCount > 1) {
+                throw new BusinessException(400, "群主退出前需要先转让群主");
+            }
+        }
+        leaveMember(member);
+        if (memberRepository.countByConversationIdAndStatus(conversationId, ACTIVE) == 0L) {
+            conversation.setStatus(INACTIVE);
+            conversationRepository.save(conversation);
+        }
+        log.info("chat conversation left userId={} conversationId={}", userId, conversationId);
     }
 
     public PageResponse<MessageVO> listMessages(Long userId,
@@ -237,13 +328,23 @@ public class ChatService {
         conversation.setMaxUserId(maxUserId);
         conversation.setStatus(ACTIVE);
         ChatConversation saved = conversationRepository.save(conversation);
-        addMember(saved.getId(), userId, "MEMBER");
-        addMember(saved.getId(), targetUserId, "MEMBER");
+        addMember(saved.getId(), userId, MEMBER);
+        addMember(saved.getId(), targetUserId, MEMBER);
         return saved;
     }
 
     private void addMember(Long conversationId, Long userId, String role) {
-        if (memberRepository.existsByConversationIdAndUserIdAndStatus(conversationId, userId, ACTIVE)) {
+        ChatConversationMember existing = memberRepository.findByConversationIdAndUserId(conversationId, userId).orElse(null);
+        if (existing != null && ACTIVE.equals(existing.getStatus())) {
+            return;
+        }
+        if (existing != null) {
+            existing.setMemberRole(role);
+            existing.setStatus(ACTIVE);
+            existing.setLeftAt(null);
+            existing.setJoinedAt(LocalDateTime.now());
+            memberRepository.save(existing);
+            redisTemplate.opsForHash().delete(unreadKey(userId), String.valueOf(conversationId));
             return;
         }
         ChatConversationMember member = new ChatConversationMember();
@@ -254,6 +355,13 @@ public class ChatService {
         memberRepository.save(member);
     }
 
+    private void leaveMember(ChatConversationMember member) {
+        member.setStatus(LEFT);
+        member.setLeftAt(LocalDateTime.now());
+        memberRepository.save(member);
+        redisTemplate.opsForHash().delete(unreadKey(member.getUserId()), String.valueOf(member.getConversationId()));
+    }
+
     private ChatConversationMember requireMember(Long conversationId, Long userId) {
         if (conversationId == null || conversationId <= 0) {
             throw new BusinessException(400, "会话ID不合法");
@@ -261,6 +369,24 @@ public class ChatService {
         return memberRepository.findByConversationIdAndUserId(conversationId, userId)
                 .filter(member -> ACTIVE.equals(member.getStatus()))
                 .orElseThrow(() -> new BusinessException(403, "无权访问该会话"));
+    }
+
+    private ChatConversation requireGroupConversation(Long conversationId) {
+        ChatConversation conversation = conversationRepository.findById(conversationId)
+                .filter(value -> ACTIVE.equals(value.getStatus()))
+                .orElseThrow(() -> new BusinessException(404, "会话不存在"));
+        if (!GROUP.equals(conversation.getConversationType())) {
+            throw new BusinessException(400, "该操作仅支持群聊");
+        }
+        return conversation;
+    }
+
+    private ChatConversationMember requireOwner(Long conversationId, Long userId) {
+        ChatConversationMember member = requireMember(conversationId, userId);
+        if (!OWNER.equals(member.getMemberRole())) {
+            throw new BusinessException(403, "只有群主可以执行该操作");
+        }
+        return member;
     }
 
     private void updateConversationLastMessage(Long conversationId, ChatMessage message) {
@@ -303,6 +429,19 @@ public class ChatService {
         vo.setLastMessageTime(conversation.getLastMessageTime());
         vo.setLastReadSeq(nonNull(member.getLastReadSeq()));
         vo.setUnreadCount(parseLong(redisTemplate.opsForHash().get(unreadKey(currentUserId), String.valueOf(conversation.getId()))));
+        vo.setCurrentUserRole(member.getMemberRole());
+        vo.setMemberCount(memberRepository.countByConversationIdAndStatus(conversation.getId(), ACTIVE));
+        return vo;
+    }
+
+    private MemberVO toMember(ChatConversationMember member) {
+        MemberVO vo = new MemberVO();
+        vo.setUserId(member.getUserId());
+        vo.setMemberRole(member.getMemberRole());
+        vo.setLastReadSeq(nonNull(member.getLastReadSeq()));
+        vo.setStatus(member.getStatus());
+        vo.setJoinedAt(member.getJoinedAt());
+        vo.setLeftAt(member.getLeftAt());
         return vo;
     }
 
