@@ -40,8 +40,11 @@ public class AuthController {
     }
 
     @PostMapping("/logout")
-    public ApiResponse<Void> logout(@RequestParam(defaultValue = "web") String deviceId, HttpServletRequest servletRequest) {
-        authService.logout(UserContext.getUserId(), deviceId, RequestTraceFilter.clientIp(servletRequest), servletRequest.getHeader("User-Agent"));
+    public ApiResponse<Void> logout(@RequestParam(defaultValue = "web") String deviceId,
+                                    @RequestHeader(value = "Authorization", required = false) String authorization,
+                                    HttpServletRequest servletRequest) {
+        authService.logout(UserContext.getUserId(), deviceId, authorization,
+                RequestTraceFilter.clientIp(servletRequest), servletRequest.getHeader("User-Agent"));
         return ApiResponse.success(null);
     }
 

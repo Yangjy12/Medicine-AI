@@ -167,8 +167,9 @@ public class AuthService {
         return new TokenVO(jwtService.createAccessToken(user), newRefreshToken, jwtService.getAccessTokenTtlSeconds());
     }
 
-    public void logout(Long userId, String deviceId, String ip, String userAgent) {
+    public void logout(Long userId, String deviceId, String authorization, String ip, String userAgent) {
         redisTemplate.delete(refreshKey(userId, normalizeDevice(deviceId)));
+        blacklistAccessToken(userId, authorization);
         auditService.audit(userId, "LOGOUT", String.valueOf(userId), "SUCCESS", ip, userAgent, "deviceId=" + normalizeDevice(deviceId));
         log.info("logout success userId={} deviceId={}", userId, deviceId);
     }
@@ -181,6 +182,25 @@ public class AuthService {
     private AppUser findByAccount(String account) {
         return userRepository.findByUsername(account)
                 .orElseGet(() -> userRepository.findByPhone(account).orElse(null));
+    }
+
+    private void blacklistAccessToken(Long userId, String authorization) {
+        if (!StringUtils.hasText(authorization) || !authorization.startsWith("Bearer ")) {
+            return;
+        }
+        try {
+            com.xinglin.user.security.JwtClaims claims = jwtService.parseAndValidate(authorization.substring(7));
+            if (!userId.equals(claims.getUserId()) || !StringUtils.hasText(claims.getJwtId())) {
+                return;
+            }
+            long ttlSeconds = claims.getExpiresAt() - java.time.Instant.now().getEpochSecond();
+            if (ttlSeconds > 0) {
+                redisTemplate.opsForValue().set(accessBlacklistKey(claims.getJwtId()), "1", Duration.ofSeconds(ttlSeconds));
+                log.info("access token blacklisted userId={} jti={} ttlSeconds={}", userId, claims.getJwtId(), ttlSeconds);
+            }
+        } catch (BusinessException ex) {
+            log.warn("access token blacklist skipped userId={} reason={}", userId, ex.getMessage());
+        }
     }
 
     private void checkRegisterRateLimit(String ip) {
@@ -228,6 +248,10 @@ public class AuthService {
 
     private String refreshKey(Long userId, String deviceId) {
         return "user:refresh:" + userId + ":" + deviceId;
+    }
+
+    private String accessBlacklistKey(String jwtId) {
+        return "user:access:blacklist:" + jwtId;
     }
 
     private String normalizeDevice(String deviceId) {

@@ -5,7 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xinglin.user.common.BusinessException;
 import com.xinglin.user.entity.AppUser;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -18,11 +20,14 @@ public class JwtService {
     private final ObjectMapper objectMapper;
     private final String secret;
     private final long accessTokenTtlSeconds;
+    private final StringRedisTemplate redisTemplate;
 
     public JwtService(ObjectMapper objectMapper,
+                      StringRedisTemplate redisTemplate,
                       @Value("${xinglin.auth.jwt-secret}") String secret,
                       @Value("${xinglin.auth.access-token-ttl-seconds:7200}") long accessTokenTtlSeconds) {
         this.objectMapper = objectMapper;
+        this.redisTemplate = redisTemplate;
         this.secret = secret;
         this.accessTokenTtlSeconds = accessTokenTtlSeconds;
     }
@@ -72,7 +77,11 @@ public class JwtService {
             claims.setUsername(String.valueOf(payload.get("username")));
             claims.setTokenVersion(((Number) payload.get("tokenVersion")).intValue());
             claims.setExpiresAt(exp);
-            claims.setJwtId(String.valueOf(payload.get("jti")));
+            Object jtiValue = payload.get("jti");
+            claims.setJwtId(jtiValue == null ? null : String.valueOf(jtiValue));
+            if (StringUtils.hasText(claims.getJwtId()) && Boolean.TRUE.equals(redisTemplate.hasKey(accessBlacklistKey(claims.getJwtId())))) {
+                throw new BusinessException(401, "登录状态已失效，请重新登录");
+            }
             Object roles = payload.get("roles");
             if (roles instanceof List) {
                 List<String> values = new ArrayList<>();
@@ -119,5 +128,9 @@ public class JwtService {
 
     private boolean constantTimeEquals(String a, String b) {
         return MessageDigestUtil.constantTimeEquals(a, b);
+    }
+
+    private String accessBlacklistKey(String jwtId) {
+        return "user:access:blacklist:" + jwtId;
     }
 }

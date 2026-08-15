@@ -4,7 +4,9 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.xinglin.ai.common.BusinessException;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -19,10 +21,14 @@ import java.util.Map;
 @Service
 public class AiJwtService {
     private final ObjectMapper objectMapper;
+    private final StringRedisTemplate redisTemplate;
     private final String secret;
 
-    public AiJwtService(ObjectMapper objectMapper, @Value("${xinglin.auth.jwt-secret}") String secret) {
+    public AiJwtService(ObjectMapper objectMapper,
+                        StringRedisTemplate redisTemplate,
+                        @Value("${xinglin.auth.jwt-secret}") String secret) {
         this.objectMapper = objectMapper;
+        this.redisTemplate = redisTemplate;
         this.secret = secret;
     }
 
@@ -43,6 +49,7 @@ public class AiJwtService {
             if (exp < Instant.now().getEpochSecond()) {
                 throw new BusinessException(401, "登录状态已过期");
             }
+            assertNotBlacklisted(payload);
             AuthenticatedUser user = new AuthenticatedUser();
             user.setUserId(Long.valueOf(String.valueOf(payload.get("sub"))));
             user.setUsername(String.valueOf(payload.get("username")));
@@ -75,5 +82,17 @@ public class AiJwtService {
 
     private boolean constantTimeEquals(String a, String b) {
         return MessageDigest.isEqual(a.getBytes(StandardCharsets.UTF_8), b.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private void assertNotBlacklisted(Map<String, Object> payload) {
+        Object jtiValue = payload.get("jti");
+        String jwtId = jtiValue == null ? null : String.valueOf(jtiValue);
+        if (StringUtils.hasText(jwtId) && Boolean.TRUE.equals(redisTemplate.hasKey(accessBlacklistKey(jwtId)))) {
+            throw new BusinessException(401, "登录状态已失效，请重新登录");
+        }
+    }
+
+    private String accessBlacklistKey(String jwtId) {
+        return "user:access:blacklist:" + jwtId;
     }
 }
