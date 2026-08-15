@@ -8,7 +8,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface VideoFavoriteRepository extends JpaRepository<VideoFavorite, Long> {
     boolean existsByUserIdAndVideoId(Long userId, Long videoId);
 
-    void deleteByUserIdAndVideoId(Long userId, Long videoId);
+    long deleteByUserIdAndVideoId(Long userId, Long videoId);
 
     void deleteByVideoId(Long videoId);
 

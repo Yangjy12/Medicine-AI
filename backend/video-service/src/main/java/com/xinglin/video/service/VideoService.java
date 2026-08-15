@@ -15,6 +15,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.*;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.redis.core.StringRedisTemplate;
@@ -175,9 +176,10 @@ public class VideoService {
                 .collect(Collectors.toList());
     }
 
+    @Transactional
     public void recordPlay(Long videoId, Long userId, String ip, PlayRequest request) {
         log.info("video play report videoId={} userId={} ip={} playedSecond={}", videoId, userId, ip, request.getPlayedSecond());
-        Video video = videoRepository.findById(videoId).orElseThrow(() -> new BusinessException(404, "视频不存在"));
+        requireOnlineVideo(videoId);
         int played = Optional.ofNullable(request.getPlayedSecond()).orElse(0);
         if (played < effectivePlaySeconds) {
             log.info("video play ignored by threshold videoId={} userId={} playedSecond={}", videoId, userId, played);
@@ -190,11 +192,14 @@ public class VideoService {
             log.info("video play ignored by dedup videoId={} identity={}", videoId, identity);
             return;
         }
-        video.setPlayCount(Optional.ofNullable(video.getPlayCount()).orElse(0L) + 1);
-        videoRepository.save(video);
+        int updated = videoRepository.increasePlayCount(videoId, ONLINE, 1L);
+        if (updated <= 0) {
+            redisTemplate.delete(dedupKey);
+            throw new BusinessException(404, "视频不存在或已下架");
+        }
         videoDetailLocalCache.invalidate(videoId);
         redisTemplate.opsForZSet().incrementScore("video:rank:hot:total", String.valueOf(videoId), 1);
-        log.info("video play counted videoId={} userId={} playCount={}", videoId, userId, video.getPlayCount());
+        log.info("video play counted videoId={} userId={}", videoId, userId);
     }
 
     @Transactional
@@ -202,7 +207,7 @@ public class VideoService {
         log.info("video progress update videoId={} userId={} currentSecond={} duration={}",
                 videoId, userId, request.getCurrentSecond(), request.getDuration());
         requireLogin(userId);
-        Video video = videoRepository.findById(videoId).orElseThrow(() -> new BusinessException(404, "视频不存在"));
+        Video video = requireOnlineVideo(videoId);
         int duration = Math.max(1, Optional.ofNullable(request.getDuration()).orElse(video.getDuration()));
         int current = Math.max(0, Math.min(request.getCurrentSecond(), duration));
         int percent = (int) Math.floor(current * 100.0 / duration);
@@ -243,13 +248,19 @@ public class VideoService {
     public void like(Long videoId, Long userId) {
         log.info("video like request videoId={} userId={}", videoId, userId);
         requireLogin(userId);
-        Video video = videoRepository.findById(videoId).orElseThrow(() -> new BusinessException(404, "视频不存在"));
+        requireOnlineVideo(videoId);
         if (!likeRepository.existsByUserIdAndVideoId(userId, videoId)) {
-            likeRepository.save(new VideoLike(userId, videoId));
-            video.setLikeCount(Optional.ofNullable(video.getLikeCount()).orElse(0L) + 1);
-            videoRepository.save(video);
-            videoDetailLocalCache.invalidate(videoId);
-            log.info("video like success videoId={} userId={} likeCount={}", videoId, userId, video.getLikeCount());
+            try {
+                likeRepository.save(new VideoLike(userId, videoId));
+                if (videoRepository.increaseLikeCount(videoId, ONLINE, 1L) <= 0) {
+                    likeRepository.deleteByUserIdAndVideoId(userId, videoId);
+                    throw new BusinessException(404, "视频不存在或已下架");
+                }
+                videoDetailLocalCache.invalidate(videoId);
+                log.info("video like success videoId={} userId={}", videoId, userId);
+            } catch (DataIntegrityViolationException ex) {
+                log.info("video like duplicated userId={} videoId={}", userId, videoId);
+            }
         }
     }
 
@@ -257,13 +268,12 @@ public class VideoService {
     public void unlike(Long videoId, Long userId) {
         log.info("video unlike request videoId={} userId={}", videoId, userId);
         requireLogin(userId);
-        Video video = videoRepository.findById(videoId).orElseThrow(() -> new BusinessException(404, "视频不存在"));
-        if (likeRepository.existsByUserIdAndVideoId(userId, videoId)) {
-            likeRepository.deleteByUserIdAndVideoId(userId, videoId);
-            video.setLikeCount(Math.max(0L, Optional.ofNullable(video.getLikeCount()).orElse(0L) - 1));
-            videoRepository.save(video);
+        requireOnlineVideo(videoId);
+        long deleted = likeRepository.deleteByUserIdAndVideoId(userId, videoId);
+        if (deleted > 0) {
+            videoRepository.increaseLikeCount(videoId, ONLINE, -1L);
             videoDetailLocalCache.invalidate(videoId);
-            log.info("video unlike success videoId={} userId={} likeCount={}", videoId, userId, video.getLikeCount());
+            log.info("video unlike success videoId={} userId={}", videoId, userId);
         }
     }
 
@@ -271,13 +281,19 @@ public class VideoService {
     public void favorite(Long videoId, Long userId) {
         log.info("video favorite request videoId={} userId={}", videoId, userId);
         requireLogin(userId);
-        Video video = videoRepository.findById(videoId).orElseThrow(() -> new BusinessException(404, "视频不存在"));
+        requireOnlineVideo(videoId);
         if (!favoriteRepository.existsByUserIdAndVideoId(userId, videoId)) {
-            favoriteRepository.save(new VideoFavorite(userId, videoId));
-            video.setCollectCount(Optional.ofNullable(video.getCollectCount()).orElse(0L) + 1);
-            videoRepository.save(video);
-            videoDetailLocalCache.invalidate(videoId);
-            log.info("video favorite success videoId={} userId={} collectCount={}", videoId, userId, video.getCollectCount());
+            try {
+                favoriteRepository.save(new VideoFavorite(userId, videoId));
+                if (videoRepository.increaseCollectCount(videoId, ONLINE, 1L) <= 0) {
+                    favoriteRepository.deleteByUserIdAndVideoId(userId, videoId);
+                    throw new BusinessException(404, "视频不存在或已下架");
+                }
+                videoDetailLocalCache.invalidate(videoId);
+                log.info("video favorite success videoId={} userId={}", videoId, userId);
+            } catch (DataIntegrityViolationException ex) {
+                log.info("video favorite duplicated userId={} videoId={}", userId, videoId);
+            }
         }
     }
 
@@ -285,13 +301,12 @@ public class VideoService {
     public void unfavorite(Long videoId, Long userId) {
         log.info("video unfavorite request videoId={} userId={}", videoId, userId);
         requireLogin(userId);
-        Video video = videoRepository.findById(videoId).orElseThrow(() -> new BusinessException(404, "视频不存在"));
-        if (favoriteRepository.existsByUserIdAndVideoId(userId, videoId)) {
-            favoriteRepository.deleteByUserIdAndVideoId(userId, videoId);
-            video.setCollectCount(Math.max(0L, Optional.ofNullable(video.getCollectCount()).orElse(0L) - 1));
-            videoRepository.save(video);
+        requireOnlineVideo(videoId);
+        long deleted = favoriteRepository.deleteByUserIdAndVideoId(userId, videoId);
+        if (deleted > 0) {
+            videoRepository.increaseCollectCount(videoId, ONLINE, -1L);
             videoDetailLocalCache.invalidate(videoId);
-            log.info("video unfavorite success videoId={} userId={} collectCount={}", videoId, userId, video.getCollectCount());
+            log.info("video unfavorite success videoId={} userId={}", videoId, userId);
         }
     }
 
@@ -590,5 +605,13 @@ public class VideoService {
         if (userId == null || userId <= 0) {
             throw new BusinessException(401, "请先登录");
         }
+    }
+
+    private Video requireOnlineVideo(Long videoId) {
+        if (videoId == null || videoId <= 0) {
+            throw new BusinessException(400, "视频ID不合法");
+        }
+        return videoRepository.findByIdAndStatus(videoId, ONLINE)
+                .orElseThrow(() -> new BusinessException(404, "视频不存在或已下架"));
     }
 }
