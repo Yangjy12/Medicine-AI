@@ -2,6 +2,7 @@ package com.xinglin.forum.service;
 
 import com.xinglin.forum.common.BusinessException;
 import com.xinglin.forum.common.PageResponse;
+import com.xinglin.forum.config.RabbitConfig;
 import com.xinglin.forum.dto.PostQueryRequest;
 import com.xinglin.forum.dto.SaveCommentRequest;
 import com.xinglin.forum.dto.SavePostRequest;
@@ -18,6 +19,7 @@ import com.xinglin.forum.repository.ForumPostRepository;
 import com.xinglin.forum.vo.CommentVO;
 import com.xinglin.forum.vo.PostCardVO;
 import com.xinglin.forum.vo.PostDetailVO;
+import org.springframework.amqp.rabbit.core.RabbitTemplate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -30,6 +32,8 @@ import org.springframework.data.jpa.domain.Specification;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.util.StringUtils;
 
 import javax.persistence.criteria.Predicate;
@@ -62,6 +66,7 @@ public class ForumService {
     private final ForumBoardService boardService;
     private final StringRedisTemplate redisTemplate;
     private final UserDirectoryService userDirectoryService;
+    private final RabbitTemplate rabbitTemplate;
 
     @Value("${xinglin.forum.page-size-max:50}")
     private int pageSizeMax;
@@ -75,7 +80,8 @@ public class ForumService {
                         ForumFavoriteRepository favoriteRepository,
                         ForumBoardService boardService,
                         StringRedisTemplate redisTemplate,
-                        UserDirectoryService userDirectoryService) {
+                        UserDirectoryService userDirectoryService,
+                        RabbitTemplate rabbitTemplate) {
         this.postRepository = postRepository;
         this.boardRepository = boardRepository;
         this.commentRepository = commentRepository;
@@ -84,6 +90,7 @@ public class ForumService {
         this.boardService = boardService;
         this.redisTemplate = redisTemplate;
         this.userDirectoryService = userDirectoryService;
+        this.rabbitTemplate = rabbitTemplate;
     }
 
     public PageResponse<PostCardVO> queryPosts(PostQueryRequest request, Long userId, boolean admin) {
@@ -155,6 +162,7 @@ public class ForumService {
         post.setStatus(PUBLISHED);
         post.setPublishTime(LocalDateTime.now());
         ForumPost saved = postRepository.save(post);
+        publishForumPointsEvent("POST_CREATED", saved.getUserId(), saved.getId(), null);
         log.info("forum post created userId={} postId={} boardId={} status={}", userId, saved.getId(), saved.getBoardId(), saved.getStatus());
         return toDetail(saved, userDirectoryService.findNormalUsers(java.util.Collections.singleton(saved.getUserId())));
     }
@@ -245,6 +253,7 @@ public class ForumService {
             saved = commentRepository.save(saved);
         }
         postRepository.increaseCommentCount(postId, 1L);
+        publishForumPointsEvent("COMMENT_CREATED", userId, postId, saved.getId());
         log.info("forum comment created userId={} postId={} commentId={} rootId={} parentId={}",
                 userId, postId, saved.getId(), saved.getRootId(), saved.getParentId());
         return toComment(saved, userId);
@@ -482,6 +491,40 @@ public class ForumService {
         }
         redisTemplate.opsForHash().increment(VIEW_BUFFER_KEY, String.valueOf(postId), 1L);
         redisTemplate.opsForZSet().incrementScore(HOT_TOTAL_KEY, String.valueOf(postId), 1D);
+    }
+
+    private void publishForumPointsEvent(String eventType, Long userId, Long postId, Long commentId) {
+        Map<String, Object> event = new LinkedHashMap<>();
+        event.put("eventId", java.util.UUID.randomUUID().toString());
+        event.put("eventType", eventType);
+        event.put("userId", userId);
+        event.put("postId", postId);
+        if (commentId != null) {
+            event.put("commentId", commentId);
+        }
+        Runnable publisher = () -> {
+            try {
+                String routingKey = commentId == null
+                        ? RabbitConfig.POST_CREATED_ROUTING_KEY
+                        : RabbitConfig.COMMENT_CREATED_ROUTING_KEY;
+                rabbitTemplate.convertAndSend(RabbitConfig.FORUM_EXCHANGE, routingKey, event);
+                log.info("forum points event sent eventId={} eventType={} userId={} postId={} commentId={}",
+                        event.get("eventId"), eventType, userId, postId, commentId);
+            } catch (RuntimeException ex) {
+                log.warn("forum points event send failed eventId={} eventType={} userId={} error={}",
+                        event.get("eventId"), eventType, userId, ex.getMessage());
+            }
+        };
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    publisher.run();
+                }
+            });
+        } else {
+            publisher.run();
+        }
     }
 
     private void attachPreviewReplies(Long postId, List<CommentVO> roots, Long userId) {
