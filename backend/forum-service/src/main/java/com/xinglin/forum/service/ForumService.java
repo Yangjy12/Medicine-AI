@@ -52,6 +52,7 @@ public class ForumService {
     private static final String DELETED = "DELETED";
     private static final String NORMAL = "NORMAL";
     private static final String VIEW_BUFFER_KEY = "forum:post:view:buffer";
+    private static final String HOT_TOTAL_KEY = "forum:post:hot:total";
 
     private final ForumPostRepository postRepository;
     private final ForumBoardRepository boardRepository;
@@ -180,9 +181,23 @@ public class ForumService {
         if (!admin && !userId.equals(post.getUserId())) {
             throw new BusinessException(403, "只能删除自己的帖子");
         }
+        if (DELETED.equals(post.getStatus())) {
+            return;
+        }
+        List<ForumComment> deletingComments = commentRepository.findByPostIdAndStatus(postId, NORMAL);
+        for (ForumComment comment : deletingComments) {
+            comment.setStatus(DELETED);
+        }
+        commentRepository.saveAll(deletingComments);
+        long deletedCommentLikes = deleteCommentLikes(deletingComments);
+        long deletedPostLikes = likeRepository.deleteByTargetTypeAndTargetId(POST, postId);
+        long deletedFavorites = favoriteRepository.deleteByPostId(postId);
+        redisTemplate.opsForHash().delete(VIEW_BUFFER_KEY, String.valueOf(postId));
+        redisTemplate.opsForZSet().remove(HOT_TOTAL_KEY, String.valueOf(postId));
         post.setStatus(DELETED);
         postRepository.save(post);
-        log.info("forum post deleted userId={} postId={} admin={}", userId, postId, admin);
+        log.info("forum post deleted userId={} postId={} admin={} comments={} postLikes={} commentLikes={} favorites={}",
+                userId, postId, admin, deletingComments.size(), deletedPostLikes, deletedCommentLikes, deletedFavorites);
     }
 
     @Transactional
@@ -283,10 +298,12 @@ public class ForumService {
             item.setStatus(DELETED);
         }
         commentRepository.saveAll(deleting);
+        long deletedLikes = deleteCommentLikes(deleting);
         if (!deleting.isEmpty()) {
             postRepository.increaseCommentCount(comment.getPostId(), -(long) deleting.size());
         }
-        log.info("forum comment deleted userId={} commentId={} admin={} affected={}", userId, commentId, admin, deleting.size());
+        log.info("forum comment deleted userId={} commentId={} admin={} affected={} likes={}",
+                userId, commentId, admin, deleting.size(), deletedLikes);
     }
 
     @Transactional
@@ -464,7 +481,7 @@ public class ForumService {
             return;
         }
         redisTemplate.opsForHash().increment(VIEW_BUFFER_KEY, String.valueOf(postId), 1L);
-        redisTemplate.opsForZSet().incrementScore("forum:post:hot:total", String.valueOf(postId), 1D);
+        redisTemplate.opsForZSet().incrementScore(HOT_TOTAL_KEY, String.valueOf(postId), 1D);
     }
 
     private void attachPreviewReplies(Long postId, List<CommentVO> roots, Long userId) {
@@ -633,6 +650,17 @@ public class ForumService {
 
     private boolean isRootComment(ForumComment comment) {
         return comment.getParentId() == null || comment.getParentId() <= 0 || Objects.equals(comment.getId(), comment.getRootId());
+    }
+
+    private long deleteCommentLikes(List<ForumComment> comments) {
+        if (comments == null || comments.isEmpty()) {
+            return 0L;
+        }
+        List<Long> ids = comments.stream()
+                .map(ForumComment::getId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toList());
+        return ids.isEmpty() ? 0L : likeRepository.deleteByTargetTypeAndTargetIdIn(COMMENT, ids);
     }
 
     private int normalizePage(Integer page) {
