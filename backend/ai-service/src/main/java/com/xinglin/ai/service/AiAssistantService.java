@@ -24,6 +24,7 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.util.StringUtils;
 
 import java.time.Duration;
@@ -60,6 +61,7 @@ public class AiAssistantService {
     private final StringRedisTemplate redisTemplate;
     private final ObjectMapper objectMapper;
     private final LlmClient llmClient;
+    private final TransactionTemplate transactionTemplate;
 
     @Value("${xinglin.ai.page-size-max:50}")
     private int pageSizeMax;
@@ -77,13 +79,15 @@ public class AiAssistantService {
                               VideoKnowledgeRepository videoRepository,
                               StringRedisTemplate redisTemplate,
                               ObjectMapper objectMapper,
-                              LlmClient llmClient) {
+                              LlmClient llmClient,
+                              TransactionTemplate transactionTemplate) {
         this.conversationRepository = conversationRepository;
         this.messageRepository = messageRepository;
         this.videoRepository = videoRepository;
         this.redisTemplate = redisTemplate;
         this.objectMapper = objectMapper;
         this.llmClient = llmClient;
+        this.transactionTemplate = transactionTemplate;
     }
 
     public PageResponse<AiConversationVO> listConversations(Long userId, Integer pageValue, Integer pageSizeValue) {
@@ -115,33 +119,46 @@ public class AiAssistantService {
         return new PageResponse<>(records, page, pageSize, result.getTotalElements());
     }
 
-    @Transactional
     public AiAnswerVO ask(Long userId, AskRequest request) {
         checkRateLimit(userId);
         String question = cleanText(request.getQuestion(), maxQuestionLength);
-        AiConversation conversation = request.getConversationId() == null
-                ? createConversationEntity(userId, titleFromQuestion(question))
-                : requireConversation(request.getConversationId(), userId);
-
-        AiMessage userMessage = saveMessage(conversation.getId(), userId, USER, question, null);
+        AskContext context = transactionTemplate.execute(status -> {
+            AiConversation conversation = request.getConversationId() == null
+                    ? createConversationEntity(userId, titleFromQuestion(question))
+                    : requireConversation(request.getConversationId(), userId);
+            AiMessage userMessage = saveMessage(conversation.getId(), userId, USER, question, null);
+            int updated = conversationRepository.recordUserMessage(conversation.getId(), userId, ACTIVE, question, LocalDateTime.now());
+            if (updated <= 0) {
+                throw new BusinessException(404, "会话不存在");
+            }
+            return new AskContext(conversation.getId(), userMessage.getId());
+        });
+        if (context == null) {
+            throw new BusinessException(500, "提问保存失败");
+        }
         List<CitationVO> citations = retrieve(question);
         String answer = generateAnswer(question, citations);
-        AiMessage assistantMessage = saveMessage(conversation.getId(), userId, ASSISTANT, answer, citations);
-
-        conversation.setLastQuestion(question);
-        conversation.setLastAnswerPreview(summary(answer, 300));
-        conversation.setMessageCount(nonNull(conversation.getMessageCount()) + 2);
-        conversation.setUpdatedAt(LocalDateTime.now());
-        conversationRepository.save(conversation);
+        Long assistantMessageId = transactionTemplate.execute(status -> {
+            AiMessage assistantMessage = saveMessage(context.getConversationId(), userId, ASSISTANT, answer, citations);
+            int updated = conversationRepository.recordAssistantMessage(
+                    context.getConversationId(), userId, ACTIVE, summary(answer, 300), LocalDateTime.now());
+            if (updated <= 0) {
+                throw new BusinessException(404, "会话不存在");
+            }
+            return assistantMessage.getId();
+        });
+        if (assistantMessageId == null) {
+            throw new BusinessException(500, "回答保存失败");
+        }
 
         AiAnswerVO vo = new AiAnswerVO();
-        vo.setConversationId(conversation.getId());
-        vo.setUserMessageId(userMessage.getId());
-        vo.setAssistantMessageId(assistantMessage.getId());
+        vo.setConversationId(context.getConversationId());
+        vo.setUserMessageId(context.getUserMessageId());
+        vo.setAssistantMessageId(assistantMessageId);
         vo.setAnswer(answer);
         vo.setCitations(citations);
         log.info("ai ask success userId={} conversationId={} userMessageId={} assistantMessageId={} citations={}",
-                userId, conversation.getId(), userMessage.getId(), assistantMessage.getId(), citations.size());
+                userId, context.getConversationId(), context.getUserMessageId(), assistantMessageId, citations.size());
         return vo;
     }
 
@@ -490,6 +507,24 @@ public class AiAssistantService {
 
     private int nonNull(Integer value) {
         return value == null ? 0 : value;
+    }
+
+    private static class AskContext {
+        private final Long conversationId;
+        private final Long userMessageId;
+
+        AskContext(Long conversationId, Long userMessageId) {
+            this.conversationId = conversationId;
+            this.userMessageId = userMessageId;
+        }
+
+        Long getConversationId() {
+            return conversationId;
+        }
+
+        Long getUserMessageId() {
+            return userMessageId;
+        }
     }
 
     private static class RetrievalCandidate {
