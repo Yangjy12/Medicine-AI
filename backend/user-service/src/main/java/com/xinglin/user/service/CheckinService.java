@@ -51,9 +51,14 @@ public class CheckinService {
         int offset = today.getDayOfMonth() - 1;
         Boolean old = redisTemplate.opsForValue().setBit(key, offset, true);
         if (Boolean.TRUE.equals(old)) {
-            CheckinVO vo = buildVO(true, true, 0, streakDays(userId, today), checkinRecordRepository.countByUserId(userId));
-            log.info("checkin repeated userId={} date={}", userId, today);
-            return vo;
+            if (checkinRecordRepository.existsByUserIdAndCheckinDate(userId, today)) {
+                CheckinVO vo = buildVO(true, true, 0, streakDays(userId, today), checkinRecordRepository.countByUserId(userId));
+                log.info("checkin repeated userId={} date={}", userId, today);
+                return vo;
+            }
+            redisTemplate.opsForValue().setBit(key, offset, false);
+            old = redisTemplate.opsForValue().setBit(key, offset, true);
+            log.warn("checkin bitmap inconsistent repaired userId={} date={} previousOld={}", userId, today, old);
         }
         try {
             if (checkinRecordRepository.existsByUserIdAndCheckinDate(userId, today)) {
