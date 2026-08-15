@@ -8,12 +8,23 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 
 public interface ForumPostRepository extends JpaRepository<ForumPost, Long>, JpaSpecificationExecutor<ForumPost> {
     Page<ForumPost> findByUserIdAndStatusNotOrderByCreatedAtDesc(Long userId, String status, Pageable pageable);
     List<ForumPost> findTop8ByStatusOrderByHotScoreDescPublishTimeDesc(String status);
+    List<ForumPost> findTop8ByStatusAndBoardIdInOrderByHotScoreDescPublishTimeDesc(String status, Collection<Long> boardIds);
+
+    @Query("select p from ForumPost p join ForumFavorite f on f.postId = p.id " +
+            "where f.userId = :userId and p.status = :status and p.boardId in :boardIds " +
+            "order by f.createdAt desc")
+    Page<ForumPost> findFavoritedVisiblePosts(@Param("userId") Long userId,
+                                              @Param("status") String status,
+                                              @Param("boardIds") Collection<Long> boardIds,
+                                              Pageable pageable);
 
     @Override
     Page<ForumPost> findAll(Specification<ForumPost> specification, Pageable pageable);

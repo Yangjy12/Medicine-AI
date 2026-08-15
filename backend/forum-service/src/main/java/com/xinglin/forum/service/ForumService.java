@@ -40,7 +40,9 @@ import javax.persistence.criteria.Predicate;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -53,8 +55,11 @@ public class ForumService {
     private static final String POST = "POST";
     private static final String COMMENT = "COMMENT";
     private static final String PUBLISHED = "PUBLISHED";
+    private static final String LOCKED = "LOCKED";
     private static final String DELETED = "DELETED";
+    private static final String ENABLED = "ENABLED";
     private static final String NORMAL = "NORMAL";
+    private static final List<String> ADMIN_VISIBLE_STATUSES = Arrays.asList(PUBLISHED, LOCKED);
     private static final String VIEW_BUFFER_KEY = "forum:post:view:buffer";
     private static final String HOT_TOTAL_KEY = "forum:post:hot:total";
 
@@ -122,19 +127,24 @@ public class ForumService {
     public PageResponse<PostCardVO> myFavorites(PostQueryRequest request, Long userId) {
         int page = normalizePage(request.getPage());
         int pageSize = normalizePageSize(request.getPageSize());
-        Page<ForumFavorite> result = favoriteRepository.findByUserIdOrderByCreatedAtDesc(userId, PageRequest.of(page - 1, pageSize));
-        List<ForumPost> posts = result.getContent().stream()
-                .map(favorite -> postRepository.findById(favorite.getPostId()).orElse(null))
-                .filter(Objects::nonNull)
-                .filter(post -> PUBLISHED.equals(post.getStatus()))
-                .collect(Collectors.toList());
+        List<Long> enabledBoardIds = enabledBoardIds();
+        if (enabledBoardIds.isEmpty()) {
+            return new PageResponse<>(Collections.emptyList(), page, pageSize, 0L);
+        }
+        Page<ForumPost> result = postRepository.findFavoritedVisiblePosts(
+                userId, PUBLISHED, enabledBoardIds, PageRequest.of(page - 1, pageSize));
+        List<ForumPost> posts = result.getContent();
         Map<Long, AppUserSummary> users = usersForPosts(posts);
         List<PostCardVO> records = posts.stream().map(post -> toCard(post, users)).collect(Collectors.toList());
         return new PageResponse<>(records, page, pageSize, result.getTotalElements());
     }
 
     public List<PostCardVO> hotPosts() {
-        List<ForumPost> posts = postRepository.findTop8ByStatusOrderByHotScoreDescPublishTimeDesc(PUBLISHED);
+        List<Long> enabledBoardIds = enabledBoardIds();
+        if (enabledBoardIds.isEmpty()) {
+            return Collections.emptyList();
+        }
+        List<ForumPost> posts = postRepository.findTop8ByStatusAndBoardIdInOrderByHotScoreDescPublishTimeDesc(PUBLISHED, enabledBoardIds);
         Map<Long, AppUserSummary> users = usersForPosts(posts);
         return posts.stream()
                 .map(post -> toCard(post, users))
@@ -212,7 +222,11 @@ public class ForumService {
     public PostDetailVO updatePostStatus(Long postId, String status, Boolean topFlag, Boolean essenceFlag, Long adminId) {
         ForumPost post = postRepository.findById(postId).orElseThrow(() -> new BusinessException(404, "帖子不存在"));
         if (StringUtils.hasText(status)) {
-            post.setStatus(status.trim().toUpperCase());
+            String normalized = status.trim().toUpperCase();
+            if (!ADMIN_VISIBLE_STATUSES.contains(normalized)) {
+                throw new BusinessException(400, "帖子状态不合法");
+            }
+            post.setStatus(normalized);
         }
         if (topFlag != null) {
             post.setTopFlag(topFlag);
@@ -229,7 +243,7 @@ public class ForumService {
     @Transactional
     public CommentVO createComment(Long postId, SaveCommentRequest request, Long userId) {
         ForumPost post = requireVisiblePost(postId);
-        if ("LOCKED".equals(post.getStatus())) {
+        if (LOCKED.equals(post.getStatus())) {
             throw new BusinessException(403, "帖子已锁定，不能评论");
         }
         Long parentId = request.getParentId() == null ? 0L : request.getParentId();
@@ -260,6 +274,7 @@ public class ForumService {
     }
 
     public PageResponse<CommentVO> comments(Long postId, Integer pageValue, Integer pageSizeValue, Long userId) {
+        requireVisiblePost(postId);
         int page = normalizePage(pageValue);
         int pageSize = normalizePageSize(pageSizeValue);
         Page<ForumComment> result = commentRepository.findByPostIdAndParentIdAndStatusOrderByCreatedAtDesc(
@@ -279,6 +294,7 @@ public class ForumService {
         }
         int page = normalizePage(pageValue);
         int pageSize = normalizePageSize(pageSizeValue);
+        requireVisiblePost(root.getPostId());
         Page<ForumComment> result = commentRepository.findByPostIdAndRootIdAndParentIdNotAndStatusOrderByCreatedAtAsc(
                 root.getPostId(), root.getRootId(), 0L, NORMAL, PageRequest.of(page - 1, pageSize));
         List<ForumComment> comments = result.getContent();
@@ -369,6 +385,7 @@ public class ForumService {
         if (!NORMAL.equals(comment.getStatus())) {
             throw new BusinessException(404, "评论不存在");
         }
+        requireVisiblePost(comment.getPostId());
         if (!likeRepository.existsByUserIdAndTargetTypeAndTargetId(userId, COMMENT, commentId)) {
             try {
                 likeRepository.save(new ForumLike(userId, COMMENT, commentId));
@@ -433,6 +450,12 @@ public class ForumService {
                 predicates.add(builder.equal(root.get("status"), request.getStatus().trim().toUpperCase()));
             } else {
                 predicates.add(builder.equal(root.get("status"), PUBLISHED));
+                List<Long> enabledBoardIds = enabledBoardIds();
+                if (enabledBoardIds.isEmpty()) {
+                    predicates.add(builder.disjunction());
+                } else {
+                    predicates.add(root.get("boardId").in(enabledBoardIds));
+                }
             }
             if (request.getBoardId() != null) {
                 predicates.add(builder.equal(root.get("boardId"), request.getBoardId()));
@@ -470,16 +493,23 @@ public class ForumService {
             throw new BusinessException(400, "帖子ID不合法");
         }
         ForumPost post = postRepository.findById(postId).orElseThrow(() -> new BusinessException(404, "帖子不存在"));
-        if (!PUBLISHED.equals(post.getStatus()) && !"LOCKED".equals(post.getStatus())) {
+        if (!PUBLISHED.equals(post.getStatus()) && !LOCKED.equals(post.getStatus())) {
+            throw new BusinessException(404, "帖子不存在或不可见");
+        }
+        if (!boardRepository.existsByIdAndStatus(post.getBoardId(), ENABLED)) {
             throw new BusinessException(404, "帖子不存在或不可见");
         }
         return post;
     }
 
     private void requireEnabledBoard(Long boardId) {
-        if (boardId == null || !boardRepository.existsById(boardId)) {
+        if (boardId == null || !boardRepository.existsByIdAndStatus(boardId, ENABLED)) {
             throw new BusinessException(404, "论坛板块不存在");
         }
+    }
+
+    private List<Long> enabledBoardIds() {
+        return boardRepository.findIdsByStatus(ENABLED);
     }
 
     private void recordView(Long postId, Long userId, String identity) {
