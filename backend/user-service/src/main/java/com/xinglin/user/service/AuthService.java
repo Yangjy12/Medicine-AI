@@ -52,6 +52,9 @@ public class AuthService {
     @Value("${xinglin.security.login-lock-minutes:15}")
     private int loginLockMinutes;
 
+    @Value("${xinglin.security.register-ip-max-per-hour:20}")
+    private int registerIpMaxPerHour;
+
     public AuthService(AppUserRepository userRepository,
                        UserAccountRepository accountRepository,
                        UserProfileRepository profileRepository,
@@ -72,6 +75,7 @@ public class AuthService {
 
     @Transactional
     public UserVO register(RegisterRequest request, String ip, String userAgent) {
+        checkRegisterRateLimit(ip);
         validatePassword(request.getPassword(), request.getUsername(), request.getPhone());
         if (userRepository.existsByUsername(request.getUsername())) {
             throw new BusinessException(409, "用户名已存在");
@@ -157,8 +161,10 @@ public class AuthService {
         if (!"NORMAL".equals(user.getStatus())) {
             throw new BusinessException(403, "账号状态异常");
         }
+        String newRefreshToken = createRefreshToken(userId);
+        storeRefreshToken(userId, normalizeDevice(request.getDeviceId()), newRefreshToken);
         log.info("refresh token success userId={} deviceId={}", userId, request.getDeviceId());
-        return new TokenVO(jwtService.createAccessToken(user), jwtService.getAccessTokenTtlSeconds());
+        return new TokenVO(jwtService.createAccessToken(user), newRefreshToken, jwtService.getAccessTokenTtlSeconds());
     }
 
     public void logout(Long userId, String deviceId, String ip, String userAgent) {
@@ -175,6 +181,19 @@ public class AuthService {
     private AppUser findByAccount(String account) {
         return userRepository.findByUsername(account)
                 .orElseGet(() -> userRepository.findByPhone(account).orElse(null));
+    }
+
+    private void checkRegisterRateLimit(String ip) {
+        String client = StringUtils.hasText(ip) ? ip.trim() : "unknown";
+        String key = "user:register:rate:ip:" + client;
+        Long count = redisTemplate.opsForValue().increment(key);
+        if (count != null && count == 1L) {
+            redisTemplate.expire(key, Duration.ofHours(1));
+        }
+        if (count != null && count > registerIpMaxPerHour) {
+            log.warn("register rate limited ip={} count={}", client, count);
+            throw new BusinessException(429, "注册过于频繁，请稍后再试");
+        }
     }
 
     private void validatePassword(String password, String username, String phone) {

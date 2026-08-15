@@ -61,6 +61,7 @@ xinglin:
     bcrypt-strength: ${BCRYPT_STRENGTH:10}
     login-max-failures: ${LOGIN_MAX_FAILURES:5}
     login-lock-minutes: ${LOGIN_LOCK_MINUTES:15}
+    register-ip-max-per-hour: ${REGISTER_IP_MAX_PER_HOUR:20}
 
 logging:
   pattern:
