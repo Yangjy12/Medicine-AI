@@ -180,6 +180,35 @@ services:
     networks:
       - xinglin-net
 
+  ai-service:
+    build:
+      context: ./backend/ai-service
+    image: xinglin/ai-service:1.0.0
+    container_name: xinglin-ai-service
+    restart: unless-stopped
+    depends_on:
+      - mysql
+      - redis
+    environment:
+      SERVER_PORT: 8083
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-xinglin_video}
+      MYSQL_USERNAME: root
+      MYSQL_PASSWORD: ${MYSQL_ROOT_PASSWORD:-xinglin_mysql_pwd}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-xinglin_redis_pwd}
+      JWT_SECRET: ${JWT_SECRET:-change_this_dev_secret_at_least_32_chars}
+      AI_LLM_ENABLED: ${AI_LLM_ENABLED:-false}
+      AI_LLM_ENDPOINT: ${AI_LLM_ENDPOINT:-}
+      AI_LLM_API_KEY: ${AI_LLM_API_KEY:-}
+      AI_LLM_MODEL: ${AI_LLM_MODEL:-gpt-4o-mini}
+      AI_LLM_TIMEOUT_SECONDS: ${AI_LLM_TIMEOUT_SECONDS:-20}
+      TZ: Asia/Shanghai
+    networks:
+      - xinglin-net
+
   frontend:
     build:
       context: ./frontend
@@ -191,6 +220,7 @@ services:
       - user-service
       - forum-service
       - chat-service
+      - ai-service
     volumes:
       - ./data/media:/data/media:ro
     ports:

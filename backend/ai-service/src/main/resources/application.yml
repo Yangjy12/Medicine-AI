@@ -1,0 +1,46 @@
+server:
+  port: ${SERVER_PORT:8083}
+
+spring:
+  application:
+    name: xinglin-ai-service
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:xinglin_video}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_PASSWORD:root}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.MySQL8Dialect
+  redis:
+    host: ${REDIS_HOST:localhost}
+    port: ${REDIS_PORT:6379}
+    password: ${REDIS_PASSWORD:}
+    timeout: 2s
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{traceId:-},%X{userId:-}] %logger{36} - %msg%n"
+  level:
+    com.xinglin.ai: INFO
+    org.hibernate.SQL: WARN
+
+xinglin:
+  auth:
+    jwt-secret: ${JWT_SECRET:change_this_dev_secret_at_least_32_chars}
+  ai:
+    page-size-max: 50
+    max-question-length: 1000
+    rag-top-k: 5
+    rate-limit-per-minute: 20
+    llm:
+      enabled: ${AI_LLM_ENABLED:false}
+      endpoint: ${AI_LLM_ENDPOINT:}
+      api-key: ${AI_LLM_API_KEY:}
+      model: ${AI_LLM_MODEL:gpt-4o-mini}
+      timeout-seconds: ${AI_LLM_TIMEOUT_SECONDS:20}
