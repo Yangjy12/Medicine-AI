@@ -7,4 +7,6 @@ import java.util.List;
 
 public interface VideoCategoryRepository extends JpaRepository<VideoCategory, Long> {
     List<VideoCategory> findByStatusOrderBySortValueAsc(Integer status);
+
+    boolean existsByIdAndStatus(Long id, Integer status);
 }

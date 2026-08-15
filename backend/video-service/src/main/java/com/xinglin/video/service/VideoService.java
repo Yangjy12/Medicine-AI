@@ -86,8 +86,14 @@ public class VideoService {
         log.info("video home query userId={}", userId);
         HomeVO home = new HomeVO();
         home.setCategories(categoryService.listEnabledCategories());
-        home.setLatest(videoRepository.findTop8ByStatusOrderByPublishTimeDesc(ONLINE).stream().map(v -> toCard(v, userId)).collect(Collectors.toList()));
-        home.setHot(videoRepository.findTop10ByStatusOrderByPlayCountDescLikeCountDescCollectCountDesc(ONLINE).stream().map(v -> toCard(v, userId)).collect(Collectors.toList()));
+        List<Long> enabledCategoryIds = categoryService.enabledCategoryIds();
+        if (enabledCategoryIds.isEmpty()) {
+            home.setLatest(Collections.emptyList());
+            home.setHot(Collections.emptyList());
+        } else {
+            home.setLatest(videoRepository.findTop8ByStatusAndCategoryIdInOrderByPublishTimeDesc(ONLINE, enabledCategoryIds).stream().map(v -> toCard(v, userId)).collect(Collectors.toList()));
+            home.setHot(videoRepository.findTop10ByStatusAndCategoryIdInOrderByPlayCountDescLikeCountDescCollectCountDesc(ONLINE, enabledCategoryIds).stream().map(v -> toCard(v, userId)).collect(Collectors.toList()));
+        }
         home.setRecommended(home.getHot().stream().limit(6).collect(Collectors.toList()));
         if (userId != null) {
             VideoQueryRequest request = new VideoQueryRequest();
@@ -161,14 +167,16 @@ public class VideoService {
         if (!ONLINE.equals(result.getStatus())) {
             throw new BusinessException(404, "视频已下架");
         }
+        if (!categoryRepository.existsByIdAndStatus(result.getCategoryId(), 1)) {
+            throw new BusinessException(404, "视频已下架");
+        }
         enrichUserState(result, userId);
         result.setRelatedVideos(related(videoId, 6, userId));
         return result;
     }
 
     public List<VideoCardVO> related(Long videoId, int limit, Long userId) {
-        Video current = videoRepository.findById(videoId)
-                .orElseThrow(() -> new BusinessException(404, "视频不存在"));
+        Video current = requireOnlineVideo(videoId);
         Pageable pageable = PageRequest.of(0, Math.max(1, Math.min(limit, 12)));
         return videoRepository.findByCategoryIdAndStatusAndIdNotOrderByPlayCountDesc(current.getCategoryId(), ONLINE, videoId, pageable)
                 .stream()
@@ -315,8 +323,12 @@ public class VideoService {
         requireLogin(userId);
         int page = normalizePage(request.getPage());
         int pageSize = normalizePageSize(request.getPageSize());
-        Page<LearningRecord> records = learningRecordRepository.findByUserIdAndVideoStatusOrderByLastLearnTimeDesc(
-                userId, ONLINE, PageRequest.of(page - 1, pageSize));
+        List<Long> enabledCategoryIds = categoryService.enabledCategoryIds();
+        if (enabledCategoryIds.isEmpty()) {
+            return new PageResponse<>(Collections.emptyList(), page, pageSize, 0L);
+        }
+        Page<LearningRecord> records = learningRecordRepository.findByUserIdAndVideoStatusAndCategoryIdsOrderByLastLearnTimeDesc(
+                userId, ONLINE, enabledCategoryIds, PageRequest.of(page - 1, pageSize));
         List<VideoCardVO> videos = records.getContent().stream()
                 .map(record -> videoRepository.findByIdAndStatus(record.getVideoId(), ONLINE).map(video -> toCard(video, userId)).orElse(null))
                 .filter(Objects::nonNull)
@@ -334,8 +346,12 @@ public class VideoService {
         }
         int page = normalizePage(request.getPage());
         int pageSize = normalizePageSize(request.getPageSize());
-        Page<VideoFavorite> records = favoriteRepository.findByUserIdAndVideoStatusOrderByCreatedAtDesc(
-                userId, ONLINE, PageRequest.of(page - 1, pageSize));
+        List<Long> enabledCategoryIds = categoryService.enabledCategoryIds();
+        if (enabledCategoryIds.isEmpty()) {
+            return new PageResponse<>(Collections.emptyList(), page, pageSize, 0L);
+        }
+        Page<VideoFavorite> records = favoriteRepository.findByUserIdAndVideoStatusAndCategoryIdsOrderByCreatedAtDesc(
+                userId, ONLINE, enabledCategoryIds, PageRequest.of(page - 1, pageSize));
         List<VideoCardVO> videos = records.getContent().stream()
                 .map(record -> videoRepository.findByIdAndStatus(record.getVideoId(), ONLINE).map(video -> toCard(video, userId)).orElse(null))
                 .filter(Objects::nonNull)
@@ -375,6 +391,7 @@ public class VideoService {
         }
         Video saved = videoRepository.save(video);
         videoDetailLocalCache.invalidate(saved.getId());
+        categoryService.invalidateCache();
         videoSearchService.sync(saved);
         return toDetail(saved);
     }
@@ -413,6 +430,7 @@ public class VideoService {
         likeRepository.deleteByVideoId(videoId);
         videoRepository.delete(video);
         videoDetailLocalCache.invalidate(videoId);
+        categoryService.invalidateCache();
         videoSearchService.delete(videoId);
         ossStorageService.deleteObject(video.getVideoObjectKey());
         ossStorageService.deleteObject(video.getCoverObjectKey());
@@ -429,6 +447,7 @@ public class VideoService {
         }
         videoRepository.save(video);
         videoDetailLocalCache.invalidate(videoId);
+        categoryService.invalidateCache();
         videoSearchService.sync(video);
     }
 
@@ -442,6 +461,12 @@ public class VideoService {
             List<Predicate> predicates = new ArrayList<>();
             if (onlyOnline) {
                 predicates.add(builder.equal(root.get("status"), ONLINE));
+                List<Long> enabledCategoryIds = categoryService.enabledCategoryIds();
+                if (enabledCategoryIds.isEmpty()) {
+                    predicates.add(builder.disjunction());
+                } else {
+                    predicates.add(root.get("categoryId").in(enabledCategoryIds));
+                }
             }
             if (request.getCategoryId() != null) {
                 predicates.add(builder.equal(root.get("categoryId"), request.getCategoryId()));
@@ -618,7 +643,11 @@ public class VideoService {
         if (videoId == null || videoId <= 0) {
             throw new BusinessException(400, "视频ID不合法");
         }
-        return videoRepository.findByIdAndStatus(videoId, ONLINE)
+        Video video = videoRepository.findByIdAndStatus(videoId, ONLINE)
                 .orElseThrow(() -> new BusinessException(404, "视频不存在或已下架"));
+        if (!categoryRepository.existsByIdAndStatus(video.getCategoryId(), 1)) {
+            throw new BusinessException(404, "视频不存在或已下架");
+        }
+        return video;
     }
 }

@@ -28,6 +28,7 @@ import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -63,6 +64,10 @@ public class VideoSearchService {
             return Optional.empty();
         }
         try {
+            List<Long> enabledCategoryIds = categoryService.enabledCategoryIds();
+            if (enabledCategoryIds.isEmpty()) {
+                return Optional.of(new PageResponse<>(Collections.emptyList(), page, pageSize, 0L));
+            }
             BoolQueryBuilder query = QueryBuilders.boolQuery()
                     .must(QueryBuilders.multiMatchQuery(request.getKeyword().trim(), "title", "description", "lecturer", "tags")
                             .type(MultiMatchQueryBuilder.Type.BEST_FIELDS)
@@ -70,7 +75,8 @@ public class VideoSearchService {
                             .field("tags", 3F)
                             .field("lecturer", 2F)
                             .field("description", 1F))
-                    .filter(QueryBuilders.termQuery("status", ONLINE));
+                    .filter(QueryBuilders.termQuery("status", ONLINE))
+                    .filter(QueryBuilders.termsQuery("categoryId", enabledCategoryIds));
             if (request.getCategoryId() != null) {
                 query.filter(QueryBuilders.termQuery("categoryId", request.getCategoryId()));
             }
@@ -137,8 +143,10 @@ public class VideoSearchService {
         if (!enabled) {
             return 0L;
         }
+        List<Long> enabledCategoryIds = categoryService.enabledCategoryIds();
         Iterable<VideoSearchDocument> documents = videoRepository.findAll().stream()
                 .filter(video -> ONLINE.equals(video.getStatus()))
+                .filter(video -> enabledCategoryIds.contains(video.getCategoryId()))
                 .map(this::toDocument)
                 .collect(Collectors.toList());
         searchRepository.deleteAll();
