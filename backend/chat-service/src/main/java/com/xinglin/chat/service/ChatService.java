@@ -118,6 +118,7 @@ public class ChatService {
         ChatConversation conversation = conversationRepository
                 .findByConversationTypeAndMinUserIdAndMaxUserIdAndStatus(PRIVATE, minUserId, maxUserId, ACTIVE)
                 .orElseGet(() -> createPrivate(userId, targetUserId, minUserId, maxUserId));
+        ensurePrivateMembers(conversation.getId(), userId, targetUserId);
         ChatConversationMember member = requireMember(conversation.getId(), userId);
         log.info("chat private conversation ready userId={} targetUserId={} conversationId={}", userId, targetUserId, conversation.getId());
         return toConversation(conversation, member, userId);
@@ -350,6 +351,11 @@ public class ChatService {
         return saved;
     }
 
+    private void ensurePrivateMembers(Long conversationId, Long userId, Long targetUserId) {
+        addMember(conversationId, userId, MEMBER);
+        addMember(conversationId, targetUserId, MEMBER);
+    }
+
     private void addMember(Long conversationId, Long userId, String role) {
         ChatConversationMember existing = memberRepository.findByConversationIdAndUserId(conversationId, userId).orElse(null);
         if (existing != null && ACTIVE.equals(existing.getStatus())) {
@@ -384,6 +390,9 @@ public class ChatService {
     private ChatConversationMember requireMember(Long conversationId, Long userId) {
         if (conversationId == null || conversationId <= 0) {
             throw new BusinessException(400, "会话ID不合法");
+        }
+        if (!conversationRepository.existsByIdAndStatus(conversationId, ACTIVE)) {
+            throw new BusinessException(404, "会话不存在");
         }
         return memberRepository.findByConversationIdAndUserId(conversationId, userId)
                 .filter(member -> ACTIVE.equals(member.getStatus()))
