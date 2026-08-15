@@ -6,7 +6,7 @@ import java.time.LocalDateTime;
 @Entity
 @Table(name = "chat_message", uniqueConstraints = {
         @UniqueConstraint(name = "uk_chat_msg_conv_seq", columnNames = {"conversation_id", "seq"}),
-        @UniqueConstraint(name = "uk_chat_msg_sender_client", columnNames = {"sender_id", "client_msg_id"})
+        @UniqueConstraint(name = "uk_chat_msg_conv_sender_client", columnNames = {"conversation_id", "sender_id", "client_msg_id"})
 }, indexes = {
         @Index(name = "idx_chat_msg_conv_time", columnList = "conversation_id,sent_at"),
         @Index(name = "idx_chat_msg_sender_time", columnList = "sender_id,sent_at")

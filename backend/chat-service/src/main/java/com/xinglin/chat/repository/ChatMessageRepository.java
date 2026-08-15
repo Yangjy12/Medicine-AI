@@ -14,5 +14,5 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, Long> 
     Page<ChatMessage> findByConversationIdAndStatusInOrderBySeqDesc(Long conversationId, Collection<String> statuses, Pageable pageable);
     Page<ChatMessage> findByConversationIdAndSeqGreaterThanAndStatusInOrderBySeqAsc(Long conversationId, Long seq, Collection<String> statuses, Pageable pageable);
     Optional<ChatMessage> findTopByConversationIdAndStatusOrderBySeqDesc(Long conversationId, String status);
-    Optional<ChatMessage> findBySenderIdAndClientMsgId(Long senderId, String clientMsgId);
+    Optional<ChatMessage> findByConversationIdAndSenderIdAndClientMsgId(Long conversationId, Long senderId, String clientMsgId);
 }

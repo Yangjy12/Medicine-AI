@@ -261,7 +261,7 @@ public class ChatService {
         String clientMsgId = StringUtils.hasText(request.getClientMsgId())
                 ? request.getClientMsgId().trim()
                 : UUID.randomUUID().toString();
-        ChatMessage existing = messageRepository.findBySenderIdAndClientMsgId(userId, clientMsgId).orElse(null);
+        ChatMessage existing = messageRepository.findByConversationIdAndSenderIdAndClientMsgId(conversationId, userId, clientMsgId).orElse(null);
         if (existing != null) {
             log.info("chat message idempotent hit userId={} conversationId={} clientMsgId={}", userId, conversationId, clientMsgId);
             return toMessage(existing);
@@ -291,7 +291,7 @@ public class ChatService {
             log.info("chat message sent userId={} conversationId={} messageId={} seq={}", userId, conversationId, saved.getId(), saved.getSeq());
             return vo;
         } catch (DataIntegrityViolationException ex) {
-            ChatMessage duplicated = messageRepository.findBySenderIdAndClientMsgId(userId, clientMsgId)
+            ChatMessage duplicated = messageRepository.findByConversationIdAndSenderIdAndClientMsgId(conversationId, userId, clientMsgId)
                     .orElseThrow(() -> ex);
             return toMessage(duplicated);
         }
