@@ -1,5 +1,8 @@
 package com.xinglin.ai.vo;
 
+import java.util.ArrayList;
+import java.util.List;
+
 public class CitationVO {
     private Long videoId;
     private String title;
@@ -8,6 +11,8 @@ public class CitationVO {
     private String videoUrl;
     private String coverUrl;
     private Long playCount;
+    private Double relevanceScore;
+    private List<String> matchedKeywords = new ArrayList<>();
 
     public Long getVideoId() { return videoId; }
     public void setVideoId(Long videoId) { this.videoId = videoId; }
@@ -23,4 +28,8 @@ public class CitationVO {
     public void setCoverUrl(String coverUrl) { this.coverUrl = coverUrl; }
     public Long getPlayCount() { return playCount; }
     public void setPlayCount(Long playCount) { this.playCount = playCount; }
+    public Double getRelevanceScore() { return relevanceScore; }
+    public void setRelevanceScore(Double relevanceScore) { this.relevanceScore = relevanceScore; }
+    public List<String> getMatchedKeywords() { return matchedKeywords; }
+    public void setMatchedKeywords(List<String> matchedKeywords) { this.matchedKeywords = matchedKeywords; }
 }

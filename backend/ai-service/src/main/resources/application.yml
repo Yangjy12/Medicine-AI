@@ -37,6 +37,7 @@ xinglin:
     page-size-max: 50
     max-question-length: 1000
     rag-top-k: 5
+    rag-candidate-limit: 30
     rate-limit-per-minute: 20
     llm:
       enabled: ${AI_LLM_ENABLED:false}

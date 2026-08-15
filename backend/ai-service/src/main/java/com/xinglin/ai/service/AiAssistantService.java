@@ -30,10 +30,12 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @Service
@@ -57,6 +59,8 @@ public class AiAssistantService {
     private int maxQuestionLength;
     @Value("${xinglin.ai.rag-top-k:5}")
     private int ragTopK;
+    @Value("${xinglin.ai.rag-candidate-limit:30}")
+    private int ragCandidateLimit;
     @Value("${xinglin.ai.rate-limit-per-minute:20}")
     private int rateLimitPerMinute;
 
@@ -142,25 +146,34 @@ public class AiAssistantService {
     }
 
     private List<CitationVO> retrieve(String question) {
-        Map<Long, CitationVO> citations = new LinkedHashMap<>();
-        for (String keyword : keywords(question)) {
-            List<VideoKnowledge> videos = videoRepository.searchPublished("%" + keyword + "%", PageRequest.of(0, ragTopK));
-            for (VideoKnowledge video : videos) {
-                citations.putIfAbsent(video.getId(), toCitation(video));
-                if (citations.size() >= ragTopK) {
-                    return new ArrayList<>(citations.values());
+        Map<Long, RetrievalCandidate> candidates = new LinkedHashMap<>();
+        for (String query : expandQueries(question)) {
+            for (String keyword : keywords(query)) {
+                List<VideoKnowledge> videos = videoRepository.searchPublished(
+                        "%" + keyword + "%", PageRequest.of(0, Math.max(ragCandidateLimit, ragTopK)));
+                for (VideoKnowledge video : videos) {
+                    candidates.computeIfAbsent(video.getId(), ignored -> new RetrievalCandidate(video))
+                            .add(keyword, score(video, question, keyword));
                 }
             }
         }
-        if (citations.isEmpty()) {
+        if (candidates.isEmpty()) {
             for (VideoKnowledge video : videoRepository.findTop8ByStatusOrderByPlayCountDescLikeCountDescCollectCountDesc("PUBLISHED")) {
-                citations.putIfAbsent(video.getId(), toCitation(video));
-                if (citations.size() >= Math.min(3, ragTopK)) {
+                candidates.computeIfAbsent(video.getId(), ignored -> new RetrievalCandidate(video))
+                        .add("热门课程", popularityScore(video));
+                if (candidates.size() >= Math.min(3, ragTopK)) {
                     break;
                 }
             }
         }
-        return new ArrayList<>(citations.values());
+        List<CitationVO> citations = candidates.values().stream()
+                .sorted(Comparator.comparingDouble(RetrievalCandidate::getScore).reversed())
+                .limit(ragTopK)
+                .map(this::toCitation)
+                .collect(Collectors.toList());
+        log.info("ai rag retrieved questionLength={} candidates={} returned={}",
+                question.length(), candidates.size(), citations.size());
+        return citations;
     }
 
     private String generateAnswer(String question, List<CitationVO> citations) {
@@ -184,6 +197,8 @@ public class AiAssistantService {
                 CitationVO item = citations.get(i);
                 builder.append(i + 1).append(". ").append(item.getTitle())
                         .append("，讲师：").append(nullToDefault(item.getLecturer(), "未填写"))
+                        .append("，匹配分：").append(item.getRelevanceScore())
+                        .append("，命中词：").append(item.getMatchedKeywords())
                         .append("，摘要：").append(nullToDefault(item.getSummary(), "暂无摘要")).append("\n");
             }
         }
@@ -212,9 +227,39 @@ public class AiAssistantService {
         return builder.toString();
     }
 
+    private List<String> expandQueries(String question) {
+        List<String> queries = new ArrayList<>();
+        queries.add(question);
+        String normalized = question.toLowerCase();
+        if (containsAny(normalized, "入门", "基础", "怎么学", "学习计划", "初学")) {
+            queries.add(question + " 中医基础 阴阳五行 藏象 经络 方剂 学习路径");
+        }
+        if (containsAny(normalized, "阴阳", "五行")) {
+            queries.add(question + " 阴阳五行 生克制化 藏象 病机");
+        }
+        if (containsAny(normalized, "方剂", "中药", "药性")) {
+            queries.add(question + " 方剂组成 功效 主治 配伍 禁忌");
+        }
+        if (containsAny(normalized, "经络", "穴位", "针灸")) {
+            queries.add(question + " 经络腧穴 针灸 取穴 主治");
+        }
+        String hyde = llmClient.answer(
+                "你是中医课程检索助手，只输出一段不超过120字的课程检索描述，不要回答问题。",
+                "为这个问题生成适合检索课程库的假想课程摘要：" + question);
+        if (StringUtils.hasText(hyde)) {
+            queries.add(summary(hyde, 120));
+        }
+        return queries.stream()
+                .filter(StringUtils::hasText)
+                .map(String::trim)
+                .distinct()
+                .limit(6)
+                .collect(Collectors.toList());
+    }
+
     private List<String> keywords(String question) {
         List<String> values = new ArrayList<>();
-        String clean = question.replaceAll("[，。！？、,.!?;；:：()（）\\[\\]【】]", " ").trim();
+        String clean = question.replaceAll("[,.;:!?\\[\\](){}<>\"'`~@#$%^&*+=|\\\\/\\r\\n\\t，。！？、；：（）【】《》“”‘’]", " ").trim();
         for (String item : clean.split("\\s+")) {
             String value = item.trim();
             if (value.length() >= 2) {
@@ -227,7 +272,60 @@ public class AiAssistantService {
         if (values.isEmpty()) {
             values.add(question);
         }
-        return values;
+        return values.stream().distinct().limit(12).collect(Collectors.toList());
+    }
+
+    private double score(VideoKnowledge video, String question, String keyword) {
+        String title = lower(video.getTitle());
+        String lecturer = lower(video.getLecturer());
+        String tags = lower(video.getTags());
+        String description = lower(video.getDescription());
+        String key = lower(keyword);
+        double score = popularityScore(video);
+        if (StringUtils.hasText(key)) {
+            if (title.contains(key)) {
+                score += 12D;
+            }
+            if (tags.contains(key)) {
+                score += 8D;
+            }
+            if (lecturer.contains(key)) {
+                score += 5D;
+            }
+            if (description.contains(key)) {
+                score += 3D;
+            }
+        }
+        for (String term : keywords(question)) {
+            String value = lower(term);
+            if (title.contains(value)) {
+                score += 3D;
+            } else if (tags.contains(value)) {
+                score += 2D;
+            } else if (description.contains(value)) {
+                score += 1D;
+            }
+        }
+        return score;
+    }
+
+    private double popularityScore(VideoKnowledge video) {
+        long play = video.getPlayCount() == null ? 0L : video.getPlayCount();
+        long like = video.getLikeCount() == null ? 0L : video.getLikeCount();
+        long collect = video.getCollectCount() == null ? 0L : video.getCollectCount();
+        return Math.log10(play + like * 2D + collect * 3D + 1D);
+    }
+
+    private boolean containsAny(String value, String... terms) {
+        if (!StringUtils.hasText(value)) {
+            return false;
+        }
+        for (String term : terms) {
+            if (value.contains(term)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     private void checkRateLimit(Long userId) {
@@ -314,6 +412,13 @@ public class AiAssistantService {
         return vo;
     }
 
+    private CitationVO toCitation(RetrievalCandidate candidate) {
+        CitationVO vo = toCitation(candidate.getVideo());
+        vo.setRelevanceScore(Math.round(candidate.getScore() * 100D) / 100D);
+        vo.setMatchedKeywords(new ArrayList<>(candidate.getMatchedKeywords()));
+        return vo;
+    }
+
     private String titleFromQuestion(String question) {
         return summary(question, 32);
     }
@@ -338,6 +443,10 @@ public class AiAssistantService {
         return StringUtils.hasText(value) ? value : defaultValue;
     }
 
+    private String lower(String value) {
+        return StringUtils.hasText(value) ? value.toLowerCase() : "";
+    }
+
     private int normalizePage(Integer page) {
         return page == null || page < 1 ? 1 : page;
     }
@@ -351,5 +460,34 @@ public class AiAssistantService {
 
     private int nonNull(Integer value) {
         return value == null ? 0 : value;
+    }
+
+    private static class RetrievalCandidate {
+        private final VideoKnowledge video;
+        private final Set<String> matchedKeywords = new HashSet<>();
+        private double score;
+
+        RetrievalCandidate(VideoKnowledge video) {
+            this.video = video;
+        }
+
+        void add(String keyword, double value) {
+            if (StringUtils.hasText(keyword)) {
+                matchedKeywords.add(keyword);
+            }
+            score += value;
+        }
+
+        VideoKnowledge getVideo() {
+            return video;
+        }
+
+        Set<String> getMatchedKeywords() {
+            return matchedKeywords;
+        }
+
+        double getScore() {
+            return score;
+        }
     }
 }
