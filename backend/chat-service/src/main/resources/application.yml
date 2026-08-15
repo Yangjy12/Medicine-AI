@@ -1,0 +1,39 @@
+server:
+  port: ${SERVER_PORT:8084}
+
+spring:
+  application:
+    name: xinglin-chat-service
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:xinglin_video}?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_PASSWORD:root}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.MySQL8Dialect
+  redis:
+    host: ${REDIS_HOST:localhost}
+    port: ${REDIS_PORT:6379}
+    password: ${REDIS_PASSWORD:}
+    timeout: 2s
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{traceId:-},%X{userId:-}] %logger{36} - %msg%n"
+  level:
+    com.xinglin.chat: INFO
+    org.hibernate.SQL: WARN
+
+xinglin:
+  auth:
+    jwt-secret: ${JWT_SECRET:change_this_dev_secret_at_least_32_chars}
+  chat:
+    page-size-max: ${CHAT_PAGE_SIZE_MAX:50}
+    recent-message-ttl-days: ${CHAT_RECENT_MESSAGE_TTL_DAYS:7}
+    max-text-length: ${CHAT_MESSAGE_TEXT_MAX_LENGTH:2000}
