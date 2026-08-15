@@ -315,22 +315,29 @@ public class VideoService {
         requireLogin(userId);
         int page = normalizePage(request.getPage());
         int pageSize = normalizePageSize(request.getPageSize());
-        Page<LearningRecord> records = learningRecordRepository.findByUserIdOrderByLastLearnTimeDesc(userId, PageRequest.of(page - 1, pageSize));
+        Page<LearningRecord> records = learningRecordRepository.findByUserIdAndVideoStatusOrderByLastLearnTimeDesc(
+                userId, ONLINE, PageRequest.of(page - 1, pageSize));
         List<VideoCardVO> videos = records.getContent().stream()
-                .map(record -> videoRepository.findById(record.getVideoId()).map(video -> toCard(video, userId)).orElse(null))
+                .map(record -> videoRepository.findByIdAndStatus(record.getVideoId(), ONLINE).map(video -> toCard(video, userId)).orElse(null))
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());
         return new PageResponse<>(videos, page, pageSize, records.getTotalElements());
     }
 
+    @Transactional
     public PageResponse<VideoCardVO> favorites(Long userId, VideoQueryRequest request) {
         log.info("video favorites query userId={} page={} pageSize={}", userId, request.getPage(), request.getPageSize());
         requireLogin(userId);
+        int cleaned = favoriteRepository.deleteDanglingByUserId(userId);
+        if (cleaned > 0) {
+            log.info("video dangling favorites cleaned userId={} count={}", userId, cleaned);
+        }
         int page = normalizePage(request.getPage());
         int pageSize = normalizePageSize(request.getPageSize());
-        Page<VideoFavorite> records = favoriteRepository.findByUserIdOrderByCreatedAtDesc(userId, PageRequest.of(page - 1, pageSize));
+        Page<VideoFavorite> records = favoriteRepository.findByUserIdAndVideoStatusOrderByCreatedAtDesc(
+                userId, ONLINE, PageRequest.of(page - 1, pageSize));
         List<VideoCardVO> videos = records.getContent().stream()
-                .map(record -> videoRepository.findById(record.getVideoId()).map(video -> toCard(video, userId)).orElse(null))
+                .map(record -> videoRepository.findByIdAndStatus(record.getVideoId(), ONLINE).map(video -> toCard(video, userId)).orElse(null))
                 .filter(Objects::nonNull)
                 .collect(Collectors.toList());
         return new PageResponse<>(videos, page, pageSize, records.getTotalElements());
