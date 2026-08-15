@@ -8,6 +8,7 @@ import com.xinglin.user.vo.CheckinCalendarVO;
 import com.xinglin.user.vo.CheckinVO;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -47,31 +48,42 @@ public class CheckinService {
         LocalDate today = LocalDate.now();
         String key = bitmapKey(userId, YearMonth.from(today));
         int offset = today.getDayOfMonth() - 1;
-        Boolean old = redisTemplate.opsForValue().getBit(key, offset);
+        Boolean old = redisTemplate.opsForValue().setBit(key, offset, true);
         if (Boolean.TRUE.equals(old)) {
             CheckinVO vo = buildVO(true, true, 0, streakDays(userId, today), checkinRecordRepository.countByUserId(userId));
             log.info("checkin repeated userId={} date={}", userId, today);
             return vo;
         }
-        redisTemplate.opsForValue().setBit(key, offset, true);
-        int streak = streakDays(userId, today);
-        int reward = pointsRuleService.requireEnabledRule("CHECKIN").getPoints();
-        if (streak > 0 && streak % 7 == 0) {
-            reward += pointsRuleService.requireEnabledRule("CHECKIN_7_DAYS").getPoints();
-        }
-
-        if (!checkinRecordRepository.existsByUserIdAndCheckinDate(userId, today)) {
+        try {
+            if (checkinRecordRepository.existsByUserIdAndCheckinDate(userId, today)) {
+                CheckinVO vo = buildVO(true, true, 0, streakDays(userId, today), checkinRecordRepository.countByUserId(userId));
+                log.info("checkin record repeated userId={} date={}", userId, today);
+                return vo;
+            }
+            int streak = streakDays(userId, today);
+            int reward = pointsRuleService.requireEnabledRule("CHECKIN").getPoints();
+            if (streak > 0 && streak % 7 == 0) {
+                reward += pointsRuleService.requireEnabledRule("CHECKIN_7_DAYS").getPoints();
+            }
             CheckinRecord record = new CheckinRecord();
             record.setUserId(userId);
             record.setCheckinDate(today);
             record.setRewardPoints(reward);
             record.setStreakDays(streak);
             checkinRecordRepository.save(record);
+            pointsService.addPoints(userId, "CHECKIN", today.toString(), reward, "每日签到");
+            auditService.audit(userId, "CHECKIN", today.toString(), "SUCCESS", ip, userAgent, "rewardPoints=" + reward + ",streakDays=" + streak);
+            log.info("checkin success userId={} date={} rewardPoints={} streakDays={}", userId, today, reward, streak);
+            return buildVO(true, false, reward, streak, checkinRecordRepository.countByUserId(userId));
+        } catch (DataIntegrityViolationException ex) {
+            CheckinVO vo = buildVO(true, true, 0, streakDays(userId, today), checkinRecordRepository.countByUserId(userId));
+            log.info("checkin unique repeated userId={} date={}", userId, today);
+            return vo;
+        } catch (RuntimeException ex) {
+            redisTemplate.opsForValue().setBit(key, offset, false);
+            log.warn("checkin failed and bitmap rolled back userId={} date={} error={}", userId, today, ex.getMessage());
+            throw ex;
         }
-        pointsService.addPoints(userId, "CHECKIN", today.toString(), reward, "每日签到");
-        auditService.audit(userId, "CHECKIN", today.toString(), "SUCCESS", ip, userAgent, "rewardPoints=" + reward + ",streakDays=" + streak);
-        log.info("checkin success userId={} date={} rewardPoints={} streakDays={}", userId, today, reward, streak);
-        return buildVO(true, false, reward, streak, checkinRecordRepository.countByUserId(userId));
     }
 
     public CheckinCalendarVO calendar(Long userId, String month) {

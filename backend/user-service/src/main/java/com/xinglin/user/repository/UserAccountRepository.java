@@ -13,7 +13,10 @@ public interface UserAccountRepository extends JpaRepository<UserAccount, Long> 
 
     @Modifying(clearAutomatically = true, flushAutomatically = true)
     @Query("update UserAccount a set a.availablePoints = a.availablePoints + :points, " +
-            "a.totalPoints = a.totalPoints + :points, a.version = a.version + 1 " +
-            "where a.userId = :userId and a.version = :version")
-    int addPointsCas(@Param("userId") Long userId, @Param("points") Integer points, @Param("version") Integer version);
+            "a.totalPoints = a.totalPoints + :totalDelta, a.version = a.version + 1 " +
+            "where a.userId = :userId and a.version = :version and a.availablePoints + :points >= 0")
+    int changePointsCas(@Param("userId") Long userId,
+                        @Param("points") Integer points,
+                        @Param("totalDelta") Integer totalDelta,
+                        @Param("version") Integer version);
 }

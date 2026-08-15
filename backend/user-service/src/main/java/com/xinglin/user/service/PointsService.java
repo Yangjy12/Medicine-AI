@@ -46,6 +46,9 @@ public class PointsService {
 
     @Transactional
     public boolean addPoints(Long userId, String bizType, String bizId, int points, String description) {
+        if (points == 0) {
+            throw new BusinessException(400, "积分变更不能为0");
+        }
         String idempotentKey = "user:points:idempotent:" + bizType + ":" + bizId + ":" + userId;
         Boolean first = redisTemplate.opsForValue().setIfAbsent(idempotentKey, "1", Duration.ofDays(7));
         if (Boolean.FALSE.equals(first)) {
@@ -66,10 +69,14 @@ public class PointsService {
             record.setDescription(description);
             pointsRecordRepository.save(record);
 
+            int totalDelta = Math.max(points, 0);
             for (int i = 1; i <= 3; i++) {
                 UserAccount account = accountRepository.findByUserId(userId)
                         .orElseThrow(() -> new BusinessException(404, "积分账户不存在"));
-                int updated = accountRepository.addPointsCas(userId, points, account.getVersion());
+                if (points < 0 && account.getAvailablePoints() + points < 0) {
+                    throw new BusinessException(400, "可用积分不足");
+                }
+                int updated = accountRepository.changePointsCas(userId, points, totalDelta, account.getVersion());
                 if (updated == 1) {
                     updateUserLevel(userId);
                     log.info("points add success userId={} bizType={} bizId={} points={} retry={}", userId, bizType, bizId, points, i - 1);
@@ -81,6 +88,11 @@ public class PointsService {
         } catch (DataIntegrityViolationException ex) {
             log.warn("points unique idempotent ignored userId={} bizType={} bizId={}", userId, bizType, bizId);
             return false;
+        } catch (RuntimeException ex) {
+            redisTemplate.delete(idempotentKey);
+            log.warn("points change failed and idempotent key released userId={} bizType={} bizId={} error={}",
+                    userId, bizType, bizId, ex.getMessage());
+            throw ex;
         }
     }
 
