@@ -35,6 +35,7 @@ import org.springframework.util.StringUtils;
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -56,6 +57,7 @@ public class ChatService {
     private static final String MEMBER = "MEMBER";
     private static final String NORMAL = "NORMAL";
     private static final String RECALLED = "RECALLED";
+    private static final List<String> VISIBLE_MESSAGE_STATUSES = Arrays.asList(NORMAL, RECALLED);
 
     private final ChatConversationRepository conversationRepository;
     private final ChatConversationMemberRepository memberRepository;
@@ -238,12 +240,12 @@ public class ChatService {
         Page<ChatMessage> result;
         List<MessageVO> records;
         if (afterSeq != null && afterSeq >= 0) {
-            result = messageRepository.findByConversationIdAndSeqGreaterThanAndStatusOrderBySeqAsc(
-                    conversationId, afterSeq, NORMAL, PageRequest.of(page - 1, pageSize));
+            result = messageRepository.findByConversationIdAndSeqGreaterThanAndStatusInOrderBySeqAsc(
+                    conversationId, afterSeq, VISIBLE_MESSAGE_STATUSES, PageRequest.of(page - 1, pageSize));
             records = result.getContent().stream().map(this::toMessage).collect(Collectors.toList());
         } else {
-            result = messageRepository.findByConversationIdAndStatusOrderBySeqDesc(
-                    conversationId, NORMAL, PageRequest.of(page - 1, pageSize));
+            result = messageRepository.findByConversationIdAndStatusInOrderBySeqDesc(
+                    conversationId, VISIBLE_MESSAGE_STATUSES, PageRequest.of(page - 1, pageSize));
             records = result.getContent().stream().map(this::toMessage).collect(Collectors.toList());
             Collections.reverse(records);
         }
@@ -322,6 +324,8 @@ public class ChatService {
         message.setMediaObjectKey(null);
         message.setRecalledAt(LocalDateTime.now());
         ChatMessage saved = messageRepository.save(message);
+        refreshConversationAfterRecall(saved);
+        cacheRecentMessage(toMessage(saved));
         log.info("chat message recalled userId={} conversationId={} messageId={}", userId, saved.getConversationId(), saved.getId());
         return toMessage(saved);
     }
@@ -356,6 +360,7 @@ public class ChatService {
             existing.setStatus(ACTIVE);
             existing.setLeftAt(null);
             existing.setJoinedAt(LocalDateTime.now());
+            existing.setLastReadSeq(currentLastSeq(conversationId));
             memberRepository.save(existing);
             redisTemplate.opsForHash().delete(unreadKey(userId), String.valueOf(conversationId));
             return;
@@ -365,6 +370,7 @@ public class ChatService {
         member.setUserId(userId);
         member.setMemberRole(role);
         member.setStatus(ACTIVE);
+        member.setLastReadSeq(currentLastSeq(conversationId));
         memberRepository.save(member);
     }
 
@@ -411,6 +417,25 @@ public class ChatService {
         conversationRepository.save(conversation);
     }
 
+    private void refreshConversationAfterRecall(ChatMessage recalled) {
+        ChatConversation conversation = conversationRepository.findById(recalled.getConversationId())
+                .orElseThrow(() -> new BusinessException(404, "会话不存在"));
+        if (!Objects.equals(conversation.getLastMessageId(), recalled.getId())) {
+            return;
+        }
+        messageRepository.findTopByConversationIdAndStatusOrderBySeqDesc(recalled.getConversationId(), NORMAL)
+                .ifPresentOrElse(previous -> {
+                    conversation.setLastMessageId(previous.getId());
+                    conversation.setLastMessagePreview(messagePreview(previous));
+                    conversation.setLastMessageTime(previous.getSentAt());
+                }, () -> {
+                    conversation.setLastMessageId(recalled.getId());
+                    conversation.setLastMessagePreview(messagePreview(recalled));
+                    conversation.setLastMessageTime(recalled.getSentAt());
+                });
+        conversationRepository.save(conversation);
+    }
+
     private void increaseUnread(Long conversationId, Long senderId, Long seq) {
         List<ChatConversationMember> members = memberRepository.findByConversationIdAndStatus(conversationId, ACTIVE);
         for (ChatConversationMember member : members) {
@@ -421,6 +446,12 @@ public class ChatService {
             }
             redisTemplate.opsForHash().increment(unreadKey(member.getUserId()), String.valueOf(conversationId), 1L);
         }
+    }
+
+    private Long currentLastSeq(Long conversationId) {
+        return messageRepository.findTopByConversationIdAndStatusOrderBySeqDesc(conversationId, NORMAL)
+                .map(ChatMessage::getSeq)
+                .orElse(0L);
     }
 
     private void cacheRecentMessage(MessageVO message) {
