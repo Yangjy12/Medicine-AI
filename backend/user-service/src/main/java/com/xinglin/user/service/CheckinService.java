@@ -16,6 +16,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.YearMonth;
 import java.time.format.DateTimeFormatter;
+import java.util.List;
 
 @Service
 public class CheckinService {
@@ -93,6 +94,7 @@ public class CheckinService {
         CheckinCalendarVO vo = new CheckinCalendarVO();
         vo.setMonth(yearMonth.toString());
         String key = bitmapKey(userId, yearMonth);
+        refillMonthBitmapFromDb(userId, yearMonth, key);
         for (int day = 1; day <= yearMonth.lengthOfMonth(); day++) {
             if (Boolean.TRUE.equals(redisTemplate.opsForValue().getBit(key, day - 1))) {
                 vo.getCheckedDays().add(day);
@@ -121,11 +123,27 @@ public class CheckinService {
             if (Boolean.TRUE.equals(redisTemplate.opsForValue().getBit(key, cursor.getDayOfMonth() - 1))) {
                 streak++;
                 cursor = cursor.minusDays(1);
+            } else if (checkinRecordRepository.existsByUserIdAndCheckinDate(userId, cursor)) {
+                redisTemplate.opsForValue().setBit(key, cursor.getDayOfMonth() - 1, true);
+                streak++;
+                cursor = cursor.minusDays(1);
             } else {
                 break;
             }
         }
         return streak;
+    }
+
+    private void refillMonthBitmapFromDb(Long userId, YearMonth month, String key) {
+        LocalDate start = month.atDay(1);
+        LocalDate end = month.atEndOfMonth();
+        List<CheckinRecord> records = checkinRecordRepository.findByUserIdAndCheckinDateBetweenOrderByCheckinDateAsc(userId, start, end);
+        for (CheckinRecord record : records) {
+            redisTemplate.opsForValue().setBit(key, record.getCheckinDate().getDayOfMonth() - 1, true);
+        }
+        if (!records.isEmpty()) {
+            log.info("checkin bitmap refilled userId={} month={} count={}", userId, month, records.size());
+        }
     }
 
     private String bitmapKey(Long userId, YearMonth month) {
