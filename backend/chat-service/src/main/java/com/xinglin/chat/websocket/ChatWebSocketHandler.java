@@ -103,6 +103,12 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
         if (data.hasNonNull("content")) {
             request.setContent(data.get("content").asText());
         }
+        if (data.hasNonNull("mediaUrl")) {
+            request.setMediaUrl(data.get("mediaUrl").asText());
+        }
+        if (data.hasNonNull("mediaObjectKey")) {
+            request.setMediaObjectKey(data.get("mediaObjectKey").asText());
+        }
         return request;
     }
 

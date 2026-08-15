@@ -266,8 +266,11 @@ public class ChatService {
         message.setSeq(seq);
         message.setSenderId(userId);
         message.setClientMsgId(clientMsgId);
-        message.setContentType(normalizeContentType(request.getContentType()));
-        message.setContent(cleanText(request.getContent(), maxTextLength));
+        String contentType = normalizeContentType(request.getContentType());
+        message.setContentType(contentType);
+        message.setContent(cleanMessageContent(contentType, request.getContent()));
+        message.setMediaUrl(cleanMediaUrl(contentType, request.getMediaUrl()));
+        message.setMediaObjectKey(cleanNullable(request.getMediaObjectKey(), 256));
         message.setStatus(NORMAL);
         try {
             ChatMessage saved = messageRepository.save(message);
@@ -307,6 +310,8 @@ public class ChatService {
         }
         message.setStatus(RECALLED);
         message.setContent("消息已撤回");
+        message.setMediaUrl(null);
+        message.setMediaObjectKey(null);
         message.setRecalledAt(LocalDateTime.now());
         ChatMessage saved = messageRepository.save(message);
         log.info("chat message recalled userId={} conversationId={} messageId={}", userId, saved.getConversationId(), saved.getId());
@@ -393,7 +398,7 @@ public class ChatService {
         ChatConversation conversation = conversationRepository.findById(conversationId)
                 .orElseThrow(() -> new BusinessException(404, "会话不存在"));
         conversation.setLastMessageId(message.getId());
-        conversation.setLastMessagePreview(summary(message.getContent()));
+        conversation.setLastMessagePreview(messagePreview(message));
         conversation.setLastMessageTime(message.getSentAt());
         conversationRepository.save(conversation);
     }
@@ -454,6 +459,8 @@ public class ChatService {
         vo.setClientMsgId(message.getClientMsgId());
         vo.setContentType(message.getContentType());
         vo.setContent(message.getContent());
+        vo.setMediaUrl(message.getMediaUrl());
+        vo.setMediaObjectKey(message.getMediaObjectKey());
         vo.setStatus(message.getStatus());
         vo.setSentAt(message.getSentAt());
         return vo;
@@ -486,12 +493,57 @@ public class ChatService {
         return clean.length() > maxLength ? clean.substring(0, maxLength) : clean;
     }
 
+    private String cleanMessageContent(String contentType, String value) {
+        if ("TEXT".equals(contentType)) {
+            return cleanText(value, maxTextLength);
+        }
+        if (!StringUtils.hasText(value)) {
+            return "";
+        }
+        String clean = value.trim();
+        return clean.length() > maxTextLength ? clean.substring(0, maxTextLength) : clean;
+    }
+
+    private String cleanMediaUrl(String contentType, String mediaUrl) {
+        if ("TEXT".equals(contentType)) {
+            return cleanNullable(mediaUrl, 512);
+        }
+        if (!StringUtils.hasText(mediaUrl)) {
+            throw new BusinessException(400, "媒体消息地址不能为空");
+        }
+        return cleanNullable(mediaUrl, 512);
+    }
+
+    private String cleanNullable(String value, int maxLength) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        String clean = value.trim();
+        return clean.length() > maxLength ? clean.substring(0, maxLength) : clean;
+    }
+
     private String summary(String value) {
         if (!StringUtils.hasText(value)) {
             return "";
         }
         String clean = value.trim().replaceAll("\\s+", " ");
         return clean.length() <= 80 ? clean : clean.substring(0, 80) + "...";
+    }
+
+    private String messagePreview(ChatMessage message) {
+        if ("TEXT".equals(message.getContentType()) || StringUtils.hasText(message.getContent())) {
+            return summary(message.getContent());
+        }
+        if ("IMAGE".equals(message.getContentType())) {
+            return "[图片]";
+        }
+        if ("VIDEO".equals(message.getContentType())) {
+            return "[视频]";
+        }
+        if ("FILE".equals(message.getContentType())) {
+            return "[文件]";
+        }
+        return "[消息]";
     }
 
     private int normalizePage(Integer page) {

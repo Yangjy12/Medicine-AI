@@ -10,6 +10,8 @@ public class MessageVO {
     private String clientMsgId;
     private String contentType;
     private String content;
+    private String mediaUrl;
+    private String mediaObjectKey;
     private String status;
     private LocalDateTime sentAt;
 
@@ -27,6 +29,10 @@ public class MessageVO {
     public void setContentType(String contentType) { this.contentType = contentType; }
     public String getContent() { return content; }
     public void setContent(String content) { this.content = content; }
+    public String getMediaUrl() { return mediaUrl; }
+    public void setMediaUrl(String mediaUrl) { this.mediaUrl = mediaUrl; }
+    public String getMediaObjectKey() { return mediaObjectKey; }
+    public void setMediaObjectKey(String mediaObjectKey) { this.mediaObjectKey = mediaObjectKey; }
     public String getStatus() { return status; }
     public void setStatus(String status) { this.status = status; }
     public LocalDateTime getSentAt() { return sentAt; }
