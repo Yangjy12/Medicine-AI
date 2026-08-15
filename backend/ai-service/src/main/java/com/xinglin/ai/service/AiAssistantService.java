@@ -30,9 +30,11 @@ import java.time.Duration;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -45,6 +47,12 @@ public class AiAssistantService {
     private static final String DELETED = "DELETED";
     private static final String USER = "USER";
     private static final String ASSISTANT = "ASSISTANT";
+    private static final String ONLINE = "ONLINE";
+    private static final List<String> DOMAIN_TERMS = Arrays.asList(
+            "中医", "阴阳", "五行", "藏象", "经络", "腧穴", "针灸", "艾灸", "方剂", "中药",
+            "四诊", "望闻问切", "辨证", "八纲", "脏腑", "气血津液", "病机", "治法",
+            "伤寒", "金匮", "温病", "黄帝内经", "本草", "脾胃", "肝肾", "心肺", "入门", "学习计划"
+    );
 
     private final AiConversationRepository conversationRepository;
     private final AiMessageRepository messageRepository;
@@ -149,7 +157,7 @@ public class AiAssistantService {
         Map<Long, RetrievalCandidate> candidates = new LinkedHashMap<>();
         for (String query : expandQueries(question)) {
             for (String keyword : keywords(query)) {
-                List<VideoKnowledge> videos = videoRepository.searchPublished(
+                List<VideoKnowledge> videos = videoRepository.searchOnline(
                         "%" + keyword + "%", PageRequest.of(0, Math.max(ragCandidateLimit, ragTopK)));
                 for (VideoKnowledge video : videos) {
                     candidates.computeIfAbsent(video.getId(), ignored -> new RetrievalCandidate(video))
@@ -158,7 +166,7 @@ public class AiAssistantService {
             }
         }
         if (candidates.isEmpty()) {
-            for (VideoKnowledge video : videoRepository.findTop8ByStatusOrderByPlayCountDescLikeCountDescCollectCountDesc("PUBLISHED")) {
+            for (VideoKnowledge video : videoRepository.findTop8ByStatusOrderByPlayCountDescLikeCountDescCollectCountDesc(ONLINE)) {
                 candidates.computeIfAbsent(video.getId(), ignored -> new RetrievalCandidate(video))
                         .add("热门课程", popularityScore(video));
                 if (candidates.size() >= Math.min(3, ragTopK)) {
@@ -177,7 +185,7 @@ public class AiAssistantService {
     }
 
     private String generateAnswer(String question, List<CitationVO> citations) {
-        String systemPrompt = "你是杏林学堂的中医学习助手。回答必须面向学习场景，表达谨慎，不做诊断，不替代医生。优先引用课程资料。";
+        String systemPrompt = "你是杏林学堂的中医学习助手。回答必须面向学习场景，表达谨慎，不做诊断，不替代医生。优先引用课程资料，并在涉及症状、用药、治疗判断时提示咨询执业医师。";
         String userPrompt = buildPrompt(question, citations);
         String llmAnswer = llmClient.answer(systemPrompt, userPrompt);
         if (StringUtils.hasText(llmAnswer)) {
@@ -202,24 +210,27 @@ public class AiAssistantService {
                         .append("，摘要：").append(nullToDefault(item.getSummary(), "暂无摘要")).append("\n");
             }
         }
-        builder.append("\n请给出结构化回答：核心解释、学习建议、推荐课程引用、注意事项。");
+        builder.append("\n请给出结构化回答，包含：核心解释、学习建议、推荐课程引用、注意事项。");
         return builder.toString();
     }
 
     private String localAnswer(String question, List<CitationVO> citations) {
         StringBuilder builder = new StringBuilder();
         builder.append("我已收到你的问题：“").append(question).append("”。\n\n");
-        builder.append("可以先按“概念理解 -> 典型例子 -> 课程巩固 -> 自我复盘”的顺序学习。");
-        builder.append("涉及具体症状、用药或诊疗判断时，请以执业医师意见为准。\n\n");
+        builder.append("建议先按“概念理解 -> 典型例子 -> 课程巩固 -> 自我复盘”的顺序学习。");
+        builder.append("如果问题涉及具体症状、用药或治疗判断，请以执业医师意见为准。\n\n");
         if (citations.isEmpty()) {
-            builder.append("当前课程库里没有检索到强相关内容，你可以换一个更具体的关键词，例如病机、方剂、经络、阴阳五行等。");
+            builder.append("当前课程库里没有检索到强相关内容。你可以换一个更具体的关键词，例如病机、方剂、经络、阴阳五行、针灸取穴等。");
         } else {
-            builder.append("根据课程库，建议优先看：\n");
+            builder.append("根据课程库，建议优先查看：\n");
             for (int i = 0; i < citations.size(); i++) {
                 CitationVO item = citations.get(i);
                 builder.append(i + 1).append(". ").append(item.getTitle());
                 if (StringUtils.hasText(item.getLecturer())) {
                     builder.append("（").append(item.getLecturer()).append("）");
+                }
+                if (!item.getMatchedKeywords().isEmpty()) {
+                    builder.append("，命中：").append(item.getMatchedKeywords());
                 }
                 builder.append("\n");
             }
@@ -231,16 +242,16 @@ public class AiAssistantService {
         List<String> queries = new ArrayList<>();
         queries.add(question);
         String normalized = question.toLowerCase();
-        if (containsAny(normalized, "入门", "基础", "怎么学", "学习计划", "初学")) {
+        if (containsAny(normalized, "入门", "基础", "怎么学", "如何学", "学习计划", "初学")) {
             queries.add(question + " 中医基础 阴阳五行 藏象 经络 方剂 学习路径");
         }
         if (containsAny(normalized, "阴阳", "五行")) {
             queries.add(question + " 阴阳五行 生克制化 藏象 病机");
         }
-        if (containsAny(normalized, "方剂", "中药", "药性")) {
-            queries.add(question + " 方剂组成 功效 主治 配伍 禁忌");
+        if (containsAny(normalized, "方剂", "中药", "药性", "本草")) {
+            queries.add(question + " 方剂组成 功效 主治 配伍 禁忌 中药药性");
         }
-        if (containsAny(normalized, "经络", "穴位", "针灸")) {
+        if (containsAny(normalized, "经络", "穴位", "腧穴", "针灸", "艾灸")) {
             queries.add(question + " 经络腧穴 针灸 取穴 主治");
         }
         String hyde = llmClient.answer(
@@ -258,12 +269,19 @@ public class AiAssistantService {
     }
 
     private List<String> keywords(String question) {
-        List<String> values = new ArrayList<>();
+        Set<String> values = new LinkedHashSet<>();
         String clean = question.replaceAll("[,.;:!?\\[\\](){}<>\"'`~@#$%^&*+=|\\\\/\\r\\n\\t，。！？、；：（）【】《》“”‘’]", " ").trim();
         for (String item : clean.split("\\s+")) {
             String value = item.trim();
             if (value.length() >= 2) {
                 values.add(value.length() > 30 ? value.substring(0, 30) : value);
+                addChineseNgrams(values, value);
+            }
+        }
+        String normalized = question.toLowerCase();
+        for (String term : DOMAIN_TERMS) {
+            if (normalized.contains(term.toLowerCase())) {
+                values.add(term);
             }
         }
         if (values.isEmpty() && clean.length() >= 2) {
@@ -272,7 +290,19 @@ public class AiAssistantService {
         if (values.isEmpty()) {
             values.add(question);
         }
-        return values.stream().distinct().limit(12).collect(Collectors.toList());
+        return values.stream().limit(16).collect(Collectors.toList());
+    }
+
+    private void addChineseNgrams(Set<String> values, String value) {
+        if (value.length() < 4 || !value.matches(".*[\\u4e00-\\u9fa5].*")) {
+            return;
+        }
+        int limit = Math.min(value.length(), 12);
+        for (int size = 2; size <= 4; size++) {
+            for (int index = 0; index + size <= limit && values.size() < 20; index++) {
+                values.add(value.substring(index, index + size));
+            }
+        }
     }
 
     private double score(VideoKnowledge video, String question, String keyword) {
