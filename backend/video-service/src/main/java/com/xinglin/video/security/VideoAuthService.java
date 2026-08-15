@@ -19,6 +19,16 @@ public class VideoAuthService {
         return jwtService.parseAndValidate(authorization.substring(7));
     }
 
+    public Long optionalUserId(String authorization) {
+        if (!StringUtils.hasText(authorization)) {
+            return null;
+        }
+        if (!authorization.startsWith("Bearer ")) {
+            throw new BusinessException(401, "登录凭证格式不合法");
+        }
+        return jwtService.parseAndValidate(authorization.substring(7)).getUserId();
+    }
+
     public AuthenticatedUser requireAdmin(String authorization) {
         AuthenticatedUser user = requireLogin(authorization);
         if (!user.hasRole("ADMIN")) {
