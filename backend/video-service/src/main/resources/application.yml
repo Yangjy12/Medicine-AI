@@ -26,6 +26,10 @@ spring:
     port: ${REDIS_PORT:6379}
     password: ${REDIS_PASSWORD:}
     timeout: 2s
+  elasticsearch:
+    uris: ${ELASTICSEARCH_URIS:http://localhost:9200}
+    connection-timeout: 2s
+    socket-timeout: 3s
   rabbitmq:
     host: ${RABBITMQ_HOST:localhost}
     port: ${RABBITMQ_PORT:5672}
@@ -47,6 +51,9 @@ xinglin:
     finish-threshold-percent: 90
     effective-play-seconds: 10
     play-dedup-minutes: 30
+  elasticsearch:
+    enabled: ${ES_ENABLED:true}
+    index-name: ${ES_VIDEO_INDEX:xinglin_video}
   oss:
     enabled: ${OSS_ENABLED:false}
     endpoint: ${OSS_ENDPOINT:}

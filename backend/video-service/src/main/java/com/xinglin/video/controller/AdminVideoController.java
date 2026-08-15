@@ -59,4 +59,10 @@ public class AdminVideoController {
         videoService.updateStatus(videoId, "OFFLINE");
         return ApiResponse.success(null);
     }
+
+    @PostMapping("/search/reindex")
+    public ApiResponse<Long> rebuildSearchIndex(@RequestHeader(value = "Authorization", required = false) String authorization) {
+        AuthenticatedUser admin = authService.requireAdmin(authorization);
+        return ApiResponse.success(videoService.rebuildSearchIndex(admin.getUserId()));
+    }
 }

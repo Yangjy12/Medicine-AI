@@ -40,6 +40,7 @@ public class VideoService {
     private final VideoLikeRepository likeRepository;
     private final VideoCategoryService categoryService;
     private final OssStorageService ossStorageService;
+    private final VideoSearchService videoSearchService;
     private final Cache<Long, VideoDetailVO> videoDetailLocalCache;
     private final StringRedisTemplate redisTemplate;
     private final RabbitTemplate rabbitTemplate;
@@ -63,6 +64,7 @@ public class VideoService {
                         VideoLikeRepository likeRepository,
                         VideoCategoryService categoryService,
                         OssStorageService ossStorageService,
+                        VideoSearchService videoSearchService,
                         Cache<Long, VideoDetailVO> videoDetailLocalCache,
                         StringRedisTemplate redisTemplate,
                         RabbitTemplate rabbitTemplate) {
@@ -73,6 +75,7 @@ public class VideoService {
         this.likeRepository = likeRepository;
         this.categoryService = categoryService;
         this.ossStorageService = ossStorageService;
+        this.videoSearchService = videoSearchService;
         this.videoDetailLocalCache = videoDetailLocalCache;
         this.redisTemplate = redisTemplate;
         this.rabbitTemplate = rabbitTemplate;
@@ -99,6 +102,11 @@ public class VideoService {
                 request.getKeyword(), request.getCategoryId(), request.getSort(), request.getPage(), request.getPageSize(), userId);
         int page = normalizePage(request.getPage());
         int pageSize = normalizePageSize(request.getPageSize());
+        Optional<PageResponse<VideoCardVO>> esResult = videoSearchService.search(request, userId, page, pageSize);
+        if (esResult.isPresent()) {
+            recordSearchWord(request.getKeyword());
+            return esResult.get();
+        }
         Pageable pageable = PageRequest.of(page - 1, pageSize, buildSort(request.getSort()));
         Page<Video> result = videoRepository.findAll(buildSpecification(request, true), pageable);
         List<VideoCardVO> records = result.getContent().stream()
@@ -345,6 +353,7 @@ public class VideoService {
         }
         Video saved = videoRepository.save(video);
         videoDetailLocalCache.invalidate(saved.getId());
+        videoSearchService.sync(saved);
         return toDetail(saved);
     }
 
@@ -382,6 +391,7 @@ public class VideoService {
         likeRepository.deleteByVideoId(videoId);
         videoRepository.delete(video);
         videoDetailLocalCache.invalidate(videoId);
+        videoSearchService.delete(videoId);
         ossStorageService.deleteObject(video.getVideoObjectKey());
         ossStorageService.deleteObject(video.getCoverObjectKey());
         log.info("user upload deleted videoId={} userId={}", videoId, userId);
@@ -397,6 +407,12 @@ public class VideoService {
         }
         videoRepository.save(video);
         videoDetailLocalCache.invalidate(videoId);
+        videoSearchService.sync(video);
+    }
+
+    public long rebuildSearchIndex(Long adminId) {
+        log.info("admin rebuild video search index adminId={}", adminId);
+        return videoSearchService.rebuild();
     }
 
     private Specification<Video> buildSpecification(VideoQueryRequest request, boolean onlyOnline) {
