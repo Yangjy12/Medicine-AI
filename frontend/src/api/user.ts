@@ -1,4 +1,5 @@
 import request from '../utils/request'
+import { mockCheckin, mockLevelRules, mockPointsAccount, mockPointsRules, mockUser } from '../mockData'
 
 export interface UserInfo {
   id: number
@@ -56,17 +57,30 @@ export interface LevelRule {
   enabled: number
 }
 
+const mockConfig = { mockFallback: true }
+
+const withMock = async <T>(promise: Promise<T>, fallback: () => T, empty?: (value: T) => boolean) => {
+  try {
+    const value = await promise
+    return empty?.(value) ? fallback() : value
+  } catch {
+    return fallback()
+  }
+}
+
+const emptyArray = <T>(value: T[]) => value.length === 0
+
 export const userApi = {
   login: (payload: { account: string; password: string; deviceId?: string }) =>
     request.post<unknown, LoginResult>('/api/user/login', payload),
   register: (payload: { username: string; phone?: string; password: string }) =>
     request.post<unknown, UserInfo>('/api/user/register', payload),
-  me: () => request.get<unknown, UserInfo>('/api/user/me'),
-  logout: () => request.post<unknown, void>('/api/user/logout'),
-  checkin: () => request.post<unknown, CheckinResult>('/api/user/checkin'),
-  pointsAccount: () => request.get<unknown, PointsAccount>('/api/user/points/account'),
-  pointsRules: () => request.get<unknown, PointsRule[]>('/api/user/admin/rules/points'),
-  savePointsRule: (payload: PointsRule) => request.post<unknown, PointsRule>('/api/user/admin/rules/points', payload),
-  levelRules: () => request.get<unknown, LevelRule[]>('/api/user/admin/rules/levels'),
-  saveLevelRule: (payload: LevelRule) => request.post<unknown, LevelRule>('/api/user/admin/rules/levels', payload)
+  me: () => withMock(request.get<unknown, UserInfo>('/api/user/me', mockConfig), () => mockUser),
+  logout: () => withMock(request.post<unknown, void>('/api/user/logout', undefined, mockConfig), () => undefined),
+  checkin: () => withMock(request.post<unknown, CheckinResult>('/api/user/checkin', undefined, mockConfig), () => mockCheckin),
+  pointsAccount: () => withMock(request.get<unknown, PointsAccount>('/api/user/points/account', mockConfig), () => mockPointsAccount),
+  pointsRules: () => withMock(request.get<unknown, PointsRule[]>('/api/user/admin/rules/points', mockConfig), () => mockPointsRules, emptyArray),
+  savePointsRule: (payload: PointsRule) => withMock(request.post<unknown, PointsRule>('/api/user/admin/rules/points', payload, mockConfig), () => ({ id: payload.id || Date.now(), ...payload })),
+  levelRules: () => withMock(request.get<unknown, LevelRule[]>('/api/user/admin/rules/levels', mockConfig), () => mockLevelRules, emptyArray),
+  saveLevelRule: (payload: LevelRule) => withMock(request.post<unknown, LevelRule>('/api/user/admin/rules/levels', payload, mockConfig), () => ({ id: payload.id || Date.now(), ...payload }))
 }

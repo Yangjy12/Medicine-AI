@@ -34,6 +34,7 @@
 import { ElMessage } from 'element-plus'
 import { Send, Sparkles } from 'lucide-vue-next'
 import { ref } from 'vue'
+import { mockAiMessages, mockAiPresets } from '../mockData'
 
 interface ChatMessage {
   id: number
@@ -41,15 +42,9 @@ interface ChatMessage {
   content: string
 }
 
-const presets = ['帮我制定中医基础学习计划', '解释阴阳五行的关系', '推荐适合初学者的课程']
+const presets = mockAiPresets
 const draft = ref('')
-const messages = ref<ChatMessage[]>([
-  {
-    id: 1,
-    role: 'assistant',
-    content: 'AI 助手后端服务正在接入，当前页面已预留对话入口。'
-  }
-])
+const messages = ref<ChatMessage[]>([...mockAiMessages])
 
 const send = () => {
   const content = draft.value.trim()
@@ -61,7 +56,7 @@ const send = () => {
   messages.value.push({
     id: Date.now() + 1,
     role: 'assistant',
-    content: '问题已收到。后续接入 ai-service 后，这里会返回 RAG 检索和课程引用结果。'
+    content: '我会先拆解你的问题，再结合课程知识库给出学习建议。当前为演示回答：建议把相关课程加入收藏，并在论坛发一条复盘帖巩固。'
   })
   draft.value = ''
 }
